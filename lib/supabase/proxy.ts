@@ -48,7 +48,7 @@ export async function updateSession(request: NextRequest) {
     return redirectWithSessionCookies("/login");
   }
 
-  if (authenticated && pathname === "/login") {
+  if (authenticated && pathname === "/login" && request.method === "GET") {
     return redirectWithSessionCookies("/");
   }
 
