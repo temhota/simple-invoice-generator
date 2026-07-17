@@ -26,6 +26,10 @@ pnpm dev
 
 Set `DATABASE_URL` in `.env.local` to a PostgreSQL connection string before running the migration. Cloud providers such as Supabase require TLS, which is enabled by default. For a trusted local PostgreSQL server without TLS, set `DATABASE_SSL=disable`.
 
+For Supabase Auth, also set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. The utilities in `lib/supabase/client.ts` and `lib/supabase/server.ts` create browser and cookie-aware server clients respectively. `DATABASE_URL` remains server-only and must never be exposed to browser code.
+
+Set `NEXT_PUBLIC_SITE_URL` to the application origin (`http://localhost:3000` locally and the HTTPS deployment URL in production). Add both origins to Supabase Authentication → URL Configuration. The session proxy refreshes auth cookies, `/login` provides email/password sign-in and sign-up, and `/auth/confirm` handles email confirmation callbacks.
+
 Then open [http://localhost:3000](http://localhost:3000).
 
 ## Quality checks

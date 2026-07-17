@@ -31,6 +31,7 @@ type InvoiceBuilderProps = {
   initialSavedInvoices: SavedInvoiceRecord[];
   initialNextInvoiceNumber: string | null;
   initialDataError: boolean;
+  userEmail: string;
 };
 
 function ErrorMessage({ message }: { message?: string }) {
@@ -53,6 +54,7 @@ export function InvoiceBuilder({
   initialSavedInvoices,
   initialNextInvoiceNumber,
   initialDataError,
+  userEmail,
 }: InvoiceBuilderProps) {
   const initialInvoice = useMemo(() => {
     const invoice = createDefaultInvoice();
@@ -326,6 +328,7 @@ export function InvoiceBuilder({
   return (
     <main className="app-shell">
       <AppHeader
+        userEmail={userEmail}
         saveState={saveState}
         drafts={drafts}
         savedInvoices={savedInvoices}

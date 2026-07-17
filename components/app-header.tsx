@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { signOut } from "@/app/auth/actions";
 import type { SavedDraft } from "@/lib/drafts";
 import {
   invoiceStatusLabels,
@@ -10,6 +11,7 @@ import {
 } from "@/lib/saved-invoices";
 
 type AppHeaderProps = {
+  userEmail: string;
   saveState: "idle" | "saving" | "saved";
   drafts: SavedDraft[];
   savedInvoices: SavedInvoiceRecord[];
@@ -26,6 +28,7 @@ type AppHeaderProps = {
 };
 
 export function AppHeader({
+  userEmail,
   saveState,
   drafts,
   savedInvoices,
@@ -133,6 +136,10 @@ export function AppHeader({
         <button className="button secondary header-download" type="button" onClick={onExport} disabled={isExporting}>
           {isExporting ? "Preparing…" : "Download PDF"}
         </button>
+        <form action={signOut} className="account-control">
+          <span title={userEmail}>{userEmail}</span>
+          <button className="button secondary" type="submit">Sign out</button>
+        </form>
       </div>
     </header>
   );
