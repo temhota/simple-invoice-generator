@@ -15,7 +15,7 @@ export async function PATCH(request: Request, context: RouteContext<"/api/invoic
   if (!status.success) {
     return NextResponse.json({ error: "Invalid invoice status" }, { status: 400 });
   }
-  const invoice = updateInvoiceStatus(id, status.data);
+  const invoice = await updateInvoiceStatus(id, status.data);
   if (!invoice) {
     return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
   }
@@ -27,7 +27,7 @@ export async function DELETE(_request: Request, context: RouteContext<"/api/invo
   if (!z.string().uuid().safeParse(id).success) {
     return NextResponse.json({ error: "Invalid invoice id" }, { status: 400 });
   }
-  if (!deleteInvoice(id)) {
+  if (!await deleteInvoice(id)) {
     return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
   }
   return new NextResponse(null, { status: 204 });

@@ -1,83 +1,34 @@
-import Database from "better-sqlite3";
-import { mkdirSync } from "node:fs";
-import path from "node:path";
+import postgres, { type Sql } from "postgres";
 import type { ClientInput, ClientRecord, Profile } from "@/lib/contacts";
 import { invoiceSchema, type Invoice } from "@/lib/invoice";
 import type { InvoiceStatus, SavedInvoiceRecord } from "@/lib/saved-invoices";
 
-type DatabaseState = { connection?: Database.Database };
+type DatabaseState = { connection?: Sql };
 const globalDatabase = globalThis as typeof globalThis & { invoiceDatabase?: DatabaseState };
 
-function createConnection(): Database.Database {
-  const databasePath = process.env.INVOICE_DB_PATH ?? path.join(process.cwd(), "data", "invoice-studio.sqlite");
-  const dataDirectory = path.dirname(databasePath);
-  mkdirSync(dataDirectory, { recursive: true });
-  const connection = new Database(databasePath);
-  connection.pragma("journal_mode = WAL");
-  connection.pragma("foreign_keys = ON");
-  connection.exec(`
-    CREATE TABLE IF NOT EXISTS profile (
-      id INTEGER PRIMARY KEY CHECK (id = 1),
-      name TEXT NOT NULL,
-      email TEXT NOT NULL DEFAULT '',
-      address TEXT NOT NULL,
-      tax_number TEXT NOT NULL DEFAULT '',
-      vat_number TEXT NOT NULL DEFAULT '',
-      iban TEXT NOT NULL,
-      bic TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS clients (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      email TEXT NOT NULL DEFAULT '',
-      address TEXT NOT NULL,
-      vat_number TEXT NOT NULL DEFAULT '',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-
-    CREATE INDEX IF NOT EXISTS clients_name_idx ON clients(name COLLATE NOCASE);
-
-    CREATE TABLE IF NOT EXISTS invoices (
-      id TEXT PRIMARY KEY,
-      invoice_number TEXT NOT NULL UNIQUE,
-      status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'sent', 'paid')),
-      invoice_data TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      sent_at TEXT,
-      paid_at TEXT
-    );
-
-    CREATE INDEX IF NOT EXISTS invoices_status_idx ON invoices(status);
-    CREATE INDEX IF NOT EXISTS invoices_updated_idx ON invoices(updated_at DESC);
-  `);
-  return connection;
+function databaseUrl(): string {
+  const value = process.env.DATABASE_URL;
+  if (!value) throw new Error("DATABASE_URL is not configured");
+  return value;
 }
 
-function db(): Database.Database {
+function db(): Sql {
   globalDatabase.invoiceDatabase ??= {};
-  globalDatabase.invoiceDatabase.connection ??= createConnection();
-  const connection = globalDatabase.invoiceDatabase.connection;
-  // Run additive migrations for long-lived dev connections after hot reloads.
-  connection.exec(`
-    CREATE TABLE IF NOT EXISTS invoices (
-      id TEXT PRIMARY KEY,
-      invoice_number TEXT NOT NULL UNIQUE,
-      status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'sent', 'paid')),
-      invoice_data TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      sent_at TEXT,
-      paid_at TEXT
-    );
-    CREATE INDEX IF NOT EXISTS invoices_status_idx ON invoices(status);
-    CREATE INDEX IF NOT EXISTS invoices_updated_idx ON invoices(updated_at DESC);
-  `);
-  return connection;
+  globalDatabase.invoiceDatabase.connection ??= postgres(databaseUrl(), {
+    max: 5,
+    prepare: false,
+    ssl: process.env.DATABASE_SSL === "disable" ? false : "require",
+  });
+  return globalDatabase.invoiceDatabase.connection;
 }
+
+export async function closeDatabase(): Promise<void> {
+  const connection = globalDatabase.invoiceDatabase?.connection;
+  if (connection) await connection.end();
+  globalDatabase.invoiceDatabase = {};
+}
+
+type DatabaseTimestamp = Date | string;
 
 type ProfileRow = {
   name: string;
@@ -95,17 +46,20 @@ type ClientRow = {
   email: string;
   address: string;
   vat_number: string;
-  updated_at: string;
+  updated_at: DatabaseTimestamp;
 };
 
 type InvoiceRow = {
   status: InvoiceStatus;
-  invoice_data: string;
-  created_at: string;
-  updated_at: string;
-  sent_at: string | null;
-  paid_at: string | null;
+  invoice_data: Record<string, unknown> | string;
+  created_at: DatabaseTimestamp;
+  updated_at: DatabaseTimestamp;
+  sent_at: DatabaseTimestamp | null;
+  paid_at: DatabaseTimestamp | null;
 };
+
+const toIsoString = (value: DatabaseTimestamp): string =>
+  value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 
 const mapProfile = (row: ProfileRow): Profile => ({
   name: row.name,
@@ -123,136 +77,146 @@ const mapClient = (row: ClientRow): ClientRecord => ({
   email: row.email,
   address: row.address,
   vatNumber: row.vat_number,
-  updatedAt: row.updated_at,
+  updatedAt: toIsoString(row.updated_at),
 });
 
-const mapInvoice = (row: InvoiceRow): SavedInvoiceRecord => ({
-  invoice: invoiceSchema.parse((() => {
-    const stored = JSON.parse(row.invoice_data) as Record<string, unknown>;
-    return { ...stored, reverseCharge: stored.reverseCharge === true };
-  })()),
-  status: row.status,
-  createdAt: row.created_at,
-  updatedAt: row.updated_at,
-  sentAt: row.sent_at,
-  paidAt: row.paid_at,
-});
+const mapInvoice = (row: InvoiceRow): SavedInvoiceRecord => {
+  const stored = typeof row.invoice_data === "string"
+    ? JSON.parse(row.invoice_data) as Record<string, unknown>
+    : row.invoice_data;
+  return {
+    invoice: invoiceSchema.parse({ ...stored, reverseCharge: stored.reverseCharge === true }),
+    status: row.status,
+    createdAt: toIsoString(row.created_at),
+    updatedAt: toIsoString(row.updated_at),
+    sentAt: row.sent_at ? toIsoString(row.sent_at) : null,
+    paidAt: row.paid_at ? toIsoString(row.paid_at) : null,
+  };
+};
 
-export function getProfile(): Profile | null {
-  const row = db().prepare("SELECT name, email, address, tax_number, vat_number, iban, bic FROM profile WHERE id = 1").get() as ProfileRow | undefined;
+export async function getProfile(): Promise<Profile | null> {
+  const [row] = await db()<ProfileRow[]>`
+    SELECT name, email, address, tax_number, vat_number, iban, bic
+    FROM profile
+    WHERE id = 1
+  `;
   return row ? mapProfile(row) : null;
 }
 
-export function saveProfile(profile: Profile): Profile {
-  const updatedAt = new Date().toISOString();
-  db().prepare(`
+export async function saveProfile(profile: Profile): Promise<Profile> {
+  await db()`
     INSERT INTO profile (id, name, email, address, tax_number, vat_number, iban, bic, updated_at)
-    VALUES (1, @name, @email, @address, @taxNumber, @vatNumber, @iban, @bic, @updatedAt)
-    ON CONFLICT(id) DO UPDATE SET
-      name = excluded.name,
-      email = excluded.email,
-      address = excluded.address,
-      tax_number = excluded.tax_number,
-      vat_number = excluded.vat_number,
-      iban = excluded.iban,
-      bic = excluded.bic,
-      updated_at = excluded.updated_at
-  `).run({ ...profile, updatedAt });
+    VALUES (1, ${profile.name}, ${profile.email}, ${profile.address}, ${profile.taxNumber},
+      ${profile.vatNumber}, ${profile.iban}, ${profile.bic}, NOW())
+    ON CONFLICT (id) DO UPDATE SET
+      name = EXCLUDED.name,
+      email = EXCLUDED.email,
+      address = EXCLUDED.address,
+      tax_number = EXCLUDED.tax_number,
+      vat_number = EXCLUDED.vat_number,
+      iban = EXCLUDED.iban,
+      bic = EXCLUDED.bic,
+      updated_at = EXCLUDED.updated_at
+  `;
   return profile;
 }
 
-export function listClients(): ClientRecord[] {
-  const rows = db().prepare("SELECT id, name, email, address, vat_number, updated_at FROM clients ORDER BY name COLLATE NOCASE").all() as ClientRow[];
+export async function listClients(): Promise<ClientRecord[]> {
+  const rows = await db()<ClientRow[]>`
+    SELECT id, name, email, address, vat_number, updated_at
+    FROM clients
+    ORDER BY LOWER(name)
+  `;
   return rows.map(mapClient);
 }
 
-export function saveClient(input: ClientInput): ClientRecord {
+export async function saveClient(input: ClientInput): Promise<ClientRecord> {
   const id = input.id ?? crypto.randomUUID();
-  const now = new Date().toISOString();
-  db().prepare(`
+  const [row] = await db()<ClientRow[]>`
     INSERT INTO clients (id, name, email, address, vat_number, created_at, updated_at)
-    VALUES (@id, @name, @email, @address, @vatNumber, @now, @now)
-    ON CONFLICT(id) DO UPDATE SET
-      name = excluded.name,
-      email = excluded.email,
-      address = excluded.address,
-      vat_number = excluded.vat_number,
-      updated_at = excluded.updated_at
-  `).run({ id, ...input, now });
-  return { id, name: input.name, email: input.email, address: input.address, vatNumber: input.vatNumber, updatedAt: now };
+    VALUES (${id}, ${input.name}, ${input.email}, ${input.address}, ${input.vatNumber}, NOW(), NOW())
+    ON CONFLICT (id) DO UPDATE SET
+      name = EXCLUDED.name,
+      email = EXCLUDED.email,
+      address = EXCLUDED.address,
+      vat_number = EXCLUDED.vat_number,
+      updated_at = EXCLUDED.updated_at
+    RETURNING id, name, email, address, vat_number, updated_at
+  `;
+  if (!row) throw new Error("Client was not saved");
+  return mapClient(row);
 }
 
-export function deleteClient(id: string): boolean {
-  return db().prepare("DELETE FROM clients WHERE id = ?").run(id).changes > 0;
+export async function deleteClient(id: string): Promise<boolean> {
+  const result = await db()`DELETE FROM clients WHERE id = ${id}`;
+  return result.count > 0;
 }
 
-export function listInvoices(): SavedInvoiceRecord[] {
-  const rows = db().prepare(`
+export async function listInvoices(): Promise<SavedInvoiceRecord[]> {
+  const rows = await db()<InvoiceRow[]>`
     SELECT status, invoice_data, created_at, updated_at, sent_at, paid_at
     FROM invoices
     ORDER BY updated_at DESC
-  `).all() as InvoiceRow[];
+  `;
   return rows.map(mapInvoice);
 }
 
-export function saveInvoice(invoice: Invoice): SavedInvoiceRecord {
-  const now = new Date().toISOString();
-  const existing = db().prepare("SELECT status, created_at, sent_at, paid_at FROM invoices WHERE id = ?").get(invoice.id) as
-    | Pick<InvoiceRow, "status" | "created_at" | "sent_at" | "paid_at">
-    | undefined;
-  const status = existing?.status ?? "draft";
-  const createdAt = existing?.created_at ?? now;
-  db().prepare(`
-    INSERT INTO invoices (id, invoice_number, status, invoice_data, created_at, updated_at, sent_at, paid_at)
-    VALUES (@id, @invoiceNumber, @status, @invoiceData, @createdAt, @now, @sentAt, @paidAt)
-    ON CONFLICT(id) DO UPDATE SET
-      invoice_number = excluded.invoice_number,
-      invoice_data = excluded.invoice_data,
-      updated_at = excluded.updated_at
-  `).run({
-    id: invoice.id,
-    invoiceNumber: invoice.invoiceNumber,
-    status,
-    invoiceData: JSON.stringify(invoice),
-    createdAt,
-    now,
-    sentAt: existing?.sent_at ?? null,
-    paidAt: existing?.paid_at ?? null,
-  });
-  return getInvoice(invoice.id)!;
+export async function saveInvoice(invoice: Invoice): Promise<SavedInvoiceRecord> {
+  const [row] = await db()<InvoiceRow[]>`
+    INSERT INTO invoices (
+      id, invoice_number, status, invoice_data, created_at, updated_at, sent_at, paid_at
+    )
+    VALUES (
+      ${invoice.id}, ${invoice.invoiceNumber}, 'draft', ${db().json(invoice)}, NOW(), NOW(), NULL, NULL
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      invoice_number = EXCLUDED.invoice_number,
+      invoice_data = EXCLUDED.invoice_data,
+      updated_at = EXCLUDED.updated_at
+    RETURNING status, invoice_data, created_at, updated_at, sent_at, paid_at
+  `;
+  if (!row) throw new Error("Invoice was not saved");
+  return mapInvoice(row);
 }
 
-export function getInvoice(id: string): SavedInvoiceRecord | null {
-  const row = db().prepare(`
+export async function getInvoice(id: string): Promise<SavedInvoiceRecord | null> {
+  const [row] = await db()<InvoiceRow[]>`
     SELECT status, invoice_data, created_at, updated_at, sent_at, paid_at
-    FROM invoices WHERE id = ?
-  `).get(id) as InvoiceRow | undefined;
+    FROM invoices
+    WHERE id = ${id}
+  `;
   return row ? mapInvoice(row) : null;
 }
 
-export function updateInvoiceStatus(id: string, status: InvoiceStatus): SavedInvoiceRecord | null {
-  const existing = getInvoice(id);
-  if (!existing) return null;
-  const now = new Date().toISOString();
-  db().prepare(`
+export async function updateInvoiceStatus(
+  id: string,
+  status: InvoiceStatus,
+): Promise<SavedInvoiceRecord | null> {
+  const [row] = await db()<InvoiceRow[]>`
     UPDATE invoices SET
-      status = @status,
-      updated_at = @now,
-      sent_at = CASE WHEN @status = 'sent' AND sent_at IS NULL THEN @now ELSE sent_at END,
-      paid_at = CASE WHEN @status = 'paid' AND paid_at IS NULL THEN @now ELSE paid_at END
-    WHERE id = @id
-  `).run({ id, status, now });
-  return getInvoice(id);
+      status = ${status},
+      updated_at = NOW(),
+      sent_at = CASE WHEN ${status} = 'sent' AND sent_at IS NULL THEN NOW() ELSE sent_at END,
+      paid_at = CASE WHEN ${status} = 'paid' AND paid_at IS NULL THEN NOW() ELSE paid_at END
+    WHERE id = ${id}
+    RETURNING status, invoice_data, created_at, updated_at, sent_at, paid_at
+  `;
+  return row ? mapInvoice(row) : null;
 }
 
-export function deleteInvoice(id: string): boolean {
-  return db().prepare("DELETE FROM invoices WHERE id = ?").run(id).changes > 0;
+export async function deleteInvoice(id: string): Promise<boolean> {
+  const result = await db()`DELETE FROM invoices WHERE id = ${id}`;
+  return result.count > 0;
 }
 
-export function getNextInvoiceNumber(date = new Date()): string {
+export async function getNextInvoiceNumber(date = new Date()): Promise<string> {
   const year = date.getFullYear();
   const prefix = `INV-${year}-`;
-  const rows = db().prepare("SELECT invoice_number FROM invoices WHERE invoice_number LIKE ?").all(`${prefix}%`) as Array<{ invoice_number: string }>;
+  const rows = await db()<Array<{ invoice_number: string }>>`
+    SELECT invoice_number
+    FROM invoices
+    WHERE invoice_number LIKE ${`${prefix}%`}
+  `;
   const highest = rows.reduce((maximum, row) => {
     const match = row.invoice_number.match(new RegExp(`^INV-${year}-(\\d+)$`));
     return match ? Math.max(maximum, Number(match[1])) : maximum;

@@ -5,6 +5,8 @@ coverage
 *.log
 .DS_Store
 *.tsbuildinfo
+.env*
+!.env.example
 data/*.sqlite
 data/*.sqlite-shm
 data/*.sqlite-wal

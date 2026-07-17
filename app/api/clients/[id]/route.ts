@@ -9,7 +9,7 @@ export async function DELETE(_request: Request, context: RouteContext<"/api/clie
   if (!z.string().uuid().safeParse(id).success) {
     return NextResponse.json({ error: "Invalid client id" }, { status: 400 });
   }
-  if (!deleteClient(id)) {
+  if (!await deleteClient(id)) {
     return NextResponse.json({ error: "Client not found" }, { status: 404 });
   }
   return new NextResponse(null, { status: 204 });

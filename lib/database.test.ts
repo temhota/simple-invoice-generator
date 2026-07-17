@@ -1,28 +1,40 @@
 // @vitest-environment node
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
+import postgres from "postgres";
 import type { ClientRecord, Profile } from "@/lib/contacts";
 import { createDefaultInvoice } from "@/lib/invoice";
 
-let temporaryDirectory: string;
+const testDatabaseUrl = process.env.TEST_DATABASE_URL;
+const describeWithDatabase = testDatabaseUrl ? describe : describe.skip;
 let database: typeof import("@/lib/database");
 
 beforeAll(async () => {
-  temporaryDirectory = mkdtempSync(path.join(tmpdir(), "invoice-db-"));
-  process.env.INVOICE_DB_PATH = path.join(temporaryDirectory, "test.sqlite");
+  if (!testDatabaseUrl) return;
+  process.env.DATABASE_URL = testDatabaseUrl;
+  process.env.DATABASE_SSL ??= "disable";
+  const sql = postgres(testDatabaseUrl, {
+    max: 1,
+    prepare: false,
+    ssl: process.env.DATABASE_SSL === "disable" ? false : "require",
+  });
+  const migration = await readFile(path.join(process.cwd(), "migrations", "001_initial.sql"), "utf8");
+  await sql.unsafe(migration);
+  await sql`TRUNCATE profile, clients, invoices`;
+  await sql.end();
   database = await import("@/lib/database");
 });
 
-afterAll(() => {
-  delete process.env.INVOICE_DB_PATH;
-  rmSync(temporaryDirectory, { recursive: true, force: true });
+afterAll(async () => {
+  if (!testDatabaseUrl || !database) return;
+  await database.closeDatabase();
+  delete process.env.DATABASE_URL;
 });
 
-describe("profile persistence", () => {
-  it("stores and updates the freelancer profile", () => {
+describeWithDatabase("PostgreSQL persistence", () => {
+  it("stores and updates the freelancer profile", async () => {
     const profile: Profile = {
       name: "Acme Studio",
       email: "hello@example.com",
@@ -32,43 +44,29 @@ describe("profile persistence", () => {
       iban: "DE02120300000000202051",
       bic: "BYLADEM1001",
     };
-    expect(database.getProfile()).toBeNull();
-    database.saveProfile(profile);
-    expect(database.getProfile()).toEqual(profile);
-    database.saveProfile({ ...profile, address: "Hamburg" });
-    expect(database.getProfile()?.address).toBe("Hamburg");
+    expect(await database.getProfile()).toBeNull();
+    await database.saveProfile(profile);
+    expect(await database.getProfile()).toEqual(profile);
+    await database.saveProfile({ ...profile, address: "Hamburg" });
+    expect((await database.getProfile())?.address).toBe("Hamburg");
   });
-});
 
-describe("client persistence", () => {
-  let saved: ClientRecord;
-
-  it("creates and lists clients", () => {
-    saved = database.saveClient({
+  it("creates, updates, and deletes clients", async () => {
+    const saved: ClientRecord = await database.saveClient({
       name: "Northstar GmbH",
       email: "billing@northstar.example",
       address: "Munich",
       vatNumber: "DE987654321",
     });
-    expect(database.listClients()).toEqual([saved]);
+    expect(await database.listClients()).toEqual([saved]);
+
+    const updated = await database.saveClient({ ...saved, address: "Cologne" });
+    expect((await database.listClients())[0]?.address).toBe("Cologne");
+    expect(await database.deleteClient(updated.id)).toBe(true);
+    expect(await database.listClients()).toEqual([]);
   });
 
-  it("updates and deletes a client", () => {
-    const updated = database.saveClient({
-      id: saved.id,
-      name: saved.name,
-      email: saved.email,
-      address: "Cologne",
-      vatNumber: saved.vatNumber,
-    });
-    expect(database.listClients()[0]?.address).toBe("Cologne");
-    expect(database.deleteClient(updated.id)).toBe(true);
-    expect(database.listClients()).toEqual([]);
-  });
-});
-
-describe("invoice persistence", () => {
-  it("saves drafts, changes status, and advances the invoice number", () => {
+  it("saves invoices, changes status, and advances the invoice number", async () => {
     const invoice = createDefaultInvoice();
     invoice.issuer = {
       name: "Acme Studio",
@@ -91,20 +89,20 @@ describe("invoice persistence", () => {
     invoice.items = [{ id: crypto.randomUUID(), description: "Design", hours: 4, unitPriceCents: 10_000 }];
 
     const year = new Date().getFullYear();
-    expect(database.getNextInvoiceNumber()).toBe(`INV-${year}-001`);
-    const saved = database.saveInvoice(invoice);
+    expect(await database.getNextInvoiceNumber()).toBe(`INV-${year}-001`);
+    const saved = await database.saveInvoice(invoice);
     expect(saved.status).toBe("draft");
-    expect(database.listInvoices()).toHaveLength(1);
-    expect(database.getNextInvoiceNumber()).toBe(`INV-${year}-002`);
+    expect(await database.listInvoices()).toHaveLength(1);
+    expect(await database.getNextInvoiceNumber()).toBe(`INV-${year}-002`);
 
-    const sent = database.updateInvoiceStatus(invoice.id, "sent");
+    const sent = await database.updateInvoiceStatus(invoice.id, "sent");
     expect(sent?.status).toBe("sent");
     expect(sent?.sentAt).not.toBeNull();
 
-    const paid = database.updateInvoiceStatus(invoice.id, "paid");
+    const paid = await database.updateInvoiceStatus(invoice.id, "paid");
     expect(paid?.status).toBe("paid");
     expect(paid?.paidAt).not.toBeNull();
-    expect(database.deleteInvoice(invoice.id)).toBe(true);
-    expect(database.listInvoices()).toEqual([]);
+    expect(await database.deleteInvoice(invoice.id)).toBe(true);
+    expect(await database.listInvoices()).toEqual([]);
   });
 });

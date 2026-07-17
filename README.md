@@ -8,7 +8,7 @@ A browser-first invoice builder made as a one-week portfolio project. Users can 
 - React Hook Form with Zod validation
 - Tailwind CSS
 - jsPDF for client-side PDF generation
-- SQLite with `better-sqlite3` for reusable profile and client records
+- PostgreSQL with the `postgres` driver for profiles, clients, and invoices
 - Vitest for domain tests
 
 ## Money model
@@ -19,8 +19,12 @@ All monetary values are stored and calculated as integer cents. The price input 
 
 ```bash
 pnpm install
+cp .env.example .env.local
+pnpm db:migrate
 pnpm dev
 ```
+
+Set `DATABASE_URL` in `.env.local` to a PostgreSQL connection string before running the migration. Cloud providers such as Supabase require TLS, which is enabled by default. For a trusted local PostgreSQL server without TLS, set `DATABASE_SSL=disable`.
 
 Then open [http://localhost:3000](http://localhost:3000).
 
@@ -33,4 +37,4 @@ pnpm test
 pnpm build
 ```
 
-Invoice drafts are stored in `localStorage`. Reusable freelancer and client details are stored locally in `data/invoice-studio.sqlite` through validated Next.js Route Handlers.
+Invoice drafts are stored in `localStorage`. Profiles, clients, and saved invoices are stored in PostgreSQL through validated Next.js Route Handlers. Database integration tests run when `TEST_DATABASE_URL` points to a disposable PostgreSQL database.

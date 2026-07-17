@@ -6,10 +6,10 @@ export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const [profileResult, clientsResult, invoicesResult, nextNumberResult] = await Promise.allSettled([
-    Promise.resolve().then(() => getProfile()),
-    Promise.resolve().then(() => listClients()),
-    Promise.resolve().then(() => listInvoices()),
-    Promise.resolve().then(() => getNextInvoiceNumber()),
+    getProfile(),
+    listClients(),
+    listInvoices(),
+    getNextInvoiceNumber(),
   ]);
 
   const initialDataError = [profileResult, clientsResult, invoicesResult, nextNumberResult]
