@@ -15,8 +15,13 @@ function databaseUrl(): string {
 function db(): Sql {
   globalDatabase.invoiceDatabase ??= {};
   globalDatabase.invoiceDatabase.connection ??= postgres(databaseUrl(), {
-    max: 5,
+    // A serverless instance should keep a single pooled connection. Opening
+    // four connections during the initial render can exhaust or stall the
+    // Supabase transaction pooler, while postgres.js safely queues queries.
+    max: 1,
     prepare: false,
+    connect_timeout: 10,
+    idle_timeout: 20,
     ssl: process.env.DATABASE_SSL === "disable" ? false : "require",
   });
   return globalDatabase.invoiceDatabase.connection;
@@ -58,6 +63,19 @@ type InvoiceRow = {
   paid_at: DatabaseTimestamp | null;
 };
 
+type InitialDataRow = {
+  profile: ProfileRow | null;
+  clients: ClientRow[];
+  invoices: Array<InvoiceRow & { invoice_number: string }>;
+};
+
+export type InitialInvoiceData = {
+  profile: Profile | null;
+  clients: ClientRecord[];
+  invoices: SavedInvoiceRecord[];
+  nextInvoiceNumber: string;
+};
+
 const toIsoString = (value: DatabaseTimestamp): string =>
   value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 
@@ -93,6 +111,49 @@ const mapInvoice = (row: InvoiceRow): SavedInvoiceRecord => {
     paidAt: row.paid_at ? toIsoString(row.paid_at) : null,
   };
 };
+
+export async function getInitialInvoiceData(date = new Date()): Promise<InitialInvoiceData> {
+  const year = date.getFullYear();
+  const prefix = `INV-${year}-`;
+  const [row] = await db()<InitialDataRow[]>`
+    SELECT
+      (
+        SELECT ROW_TO_JSON(profile_row)
+        FROM (
+          SELECT name, email, address, tax_number, vat_number, iban, bic
+          FROM profile
+          WHERE id = 1
+        ) AS profile_row
+      ) AS profile,
+      COALESCE((
+        SELECT JSONB_AGG(TO_JSONB(client_row) ORDER BY LOWER(client_row.name))
+        FROM (
+          SELECT id, name, email, address, vat_number, updated_at
+          FROM clients
+        ) AS client_row
+      ), '[]'::JSONB) AS clients,
+      COALESCE((
+        SELECT JSONB_AGG(TO_JSONB(invoice_row) ORDER BY invoice_row.updated_at DESC)
+        FROM (
+          SELECT invoice_number, status, invoice_data, created_at, updated_at, sent_at, paid_at
+          FROM invoices
+        ) AS invoice_row
+      ), '[]'::JSONB) AS invoices
+  `;
+
+  if (!row) throw new Error("Initial invoice data was not loaded");
+  const highest = row.invoices.reduce((maximum, invoiceRow) => {
+    const match = invoiceRow.invoice_number.match(new RegExp(`^INV-${year}-(\\d+)$`));
+    return match ? Math.max(maximum, Number(match[1])) : maximum;
+  }, 0);
+
+  return {
+    profile: row.profile ? mapProfile(row.profile) : null,
+    clients: row.clients.map(mapClient),
+    invoices: row.invoices.map(mapInvoice),
+    nextInvoiceNumber: `${prefix}${String(highest + 1).padStart(3, "0")}`,
+  };
+}
 
 export async function getProfile(): Promise<Profile | null> {
   const [row] = await db()<ProfileRow[]>`

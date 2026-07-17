@@ -1,6 +1,6 @@
 import { InvoiceBuilder } from "@/components/invoice-builder";
 import { redirect } from "next/navigation";
-import { getNextInvoiceNumber, getProfile, listClients, listInvoices } from "@/lib/database";
+import { getInitialInvoiceData } from "@/lib/database";
 import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -12,23 +12,15 @@ export default async function Home() {
   if (error || !data?.claims?.sub) redirect("/login");
   const userEmail = typeof data.claims.email === "string" ? data.claims.email : "Signed in";
 
-  const [profileResult, clientsResult, invoicesResult, nextNumberResult] = await Promise.allSettled([
-    getProfile(),
-    listClients(),
-    listInvoices(),
-    getNextInvoiceNumber(),
-  ]);
-
-  const initialDataError = [profileResult, clientsResult, invoicesResult, nextNumberResult]
-    .some((result) => result.status === "rejected");
+  const initialData = await getInitialInvoiceData().catch(() => null);
 
   return (
     <InvoiceBuilder
-      initialProfile={profileResult.status === "fulfilled" ? profileResult.value : null}
-      initialClients={clientsResult.status === "fulfilled" ? clientsResult.value : []}
-      initialSavedInvoices={invoicesResult.status === "fulfilled" ? invoicesResult.value : []}
-      initialNextInvoiceNumber={nextNumberResult.status === "fulfilled" ? nextNumberResult.value : null}
-      initialDataError={initialDataError}
+      initialProfile={initialData?.profile ?? null}
+      initialClients={initialData?.clients ?? []}
+      initialSavedInvoices={initialData?.invoices ?? []}
+      initialNextInvoiceNumber={initialData?.nextInvoiceNumber ?? null}
+      initialDataError={!initialData}
       userEmail={userEmail}
     />
   );
