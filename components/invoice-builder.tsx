@@ -25,6 +25,14 @@ import {
 
 type SaveState = "idle" | "saving" | "saved";
 
+type InvoiceBuilderProps = {
+  initialProfile: Profile | null;
+  initialClients: ClientRecord[];
+  initialSavedInvoices: SavedInvoiceRecord[];
+  initialNextInvoiceNumber: string | null;
+  initialDataError: boolean;
+};
+
 function ErrorMessage({ message }: { message?: string }) {
   return message ? <p className="field-error" role="alert">{message}</p> : null;
 }
@@ -39,20 +47,32 @@ async function readJsonResponse(response: Response): Promise<unknown> {
   }
 }
 
-export function InvoiceBuilder() {
-  const initialInvoice = useMemo(() => createDefaultInvoice(), []);
+export function InvoiceBuilder({
+  initialProfile,
+  initialClients,
+  initialSavedInvoices,
+  initialNextInvoiceNumber,
+  initialDataError,
+}: InvoiceBuilderProps) {
+  const initialInvoice = useMemo(() => {
+    const invoice = createDefaultInvoice();
+    if (initialNextInvoiceNumber) invoice.invoiceNumber = initialNextInvoiceNumber;
+    return invoice;
+  }, [initialNextInvoiceNumber]);
   const [drafts, setDrafts] = useState<SavedDraft[]>([]);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [isExporting, setIsExporting] = useState(false);
   const [draftsOpen, setDraftsOpen] = useState(false);
-  const [clients, setClients] = useState<ClientRecord[]>([]);
+  const [clients, setClients] = useState<ClientRecord[]>(initialClients);
   const [selectedClientId, setSelectedClientId] = useState("");
-  const [databaseMessage, setDatabaseMessage] = useState("");
-  const [savedInvoices, setSavedInvoices] = useState<SavedInvoiceRecord[]>([]);
+  const [databaseMessage, setDatabaseMessage] = useState(
+    initialDataError ? "Some database data is temporarily unavailable." : "",
+  );
+  const [savedInvoices, setSavedInvoices] = useState<SavedInvoiceRecord[]>(initialSavedInvoices);
   const [savedInvoicesOpen, setSavedInvoicesOpen] = useState(false);
   const [isSavingInvoice, setIsSavingInvoice] = useState(false);
   const [nextInvoiceNumber, setNextInvoiceNumber] = useState(initialInvoice.invoiceNumber);
-  const [savedProfile, setSavedProfile] = useState<Profile | null>(null);
+  const [savedProfile, setSavedProfile] = useState<Profile | null>(initialProfile);
   const form = useForm<Invoice>({
     resolver: zodResolver(invoiceSchema),
     defaultValues: initialInvoice,
@@ -65,73 +85,27 @@ export function InvoiceBuilder() {
     const timeout = window.setTimeout(() => {
       const stored = readDrafts();
       setDrafts(stored);
-      if (stored[0]) form.reset(stored[0].invoice);
+      if (stored[0]) {
+        form.reset(stored[0].invoice);
+        return;
+      }
+      if (initialProfile) {
+        form.setValue("issuer", {
+          name: initialProfile.name,
+          email: initialProfile.email,
+          address: initialProfile.address,
+          taxNumber: initialProfile.taxNumber,
+          vatNumber: initialProfile.vatNumber,
+        });
+        form.setValue("banking", {
+          accountName: initialProfile.name,
+          iban: initialProfile.iban,
+          bic: initialProfile.bic,
+        });
+      }
     }, 0);
     return () => window.clearTimeout(timeout);
-  }, [form]);
-
-  useEffect(() => {
-    let active = true;
-    const hasExistingDraft = readDrafts().length > 0;
-
-    Promise.all([
-      fetch("/api/profile"),
-      fetch("/api/clients"),
-      fetch("/api/invoices"),
-      fetch("/api/invoices/next-number"),
-    ])
-      .then(async ([profileResponse, clientsResponse, invoicesResponse, nextNumberResponse]) => {
-        if (!profileResponse.ok || !clientsResponse.ok || !invoicesResponse.ok || !nextNumberResponse.ok) {
-          throw new Error("Database request failed");
-        }
-        const profilePayload: unknown = await profileResponse.json();
-        const clientsPayload: unknown = await clientsResponse.json();
-        const invoicesPayload: unknown = await invoicesResponse.json();
-        const nextNumberPayload: unknown = await nextNumberResponse.json();
-        if (!active) return;
-
-        const profileResult = profileSchema.nullable().safeParse(
-          (profilePayload as { profile?: unknown }).profile ?? null,
-        );
-        const clientsResult = clientRecordSchema.array().safeParse(
-          (clientsPayload as { clients?: unknown }).clients ?? [],
-        );
-        const invoicesResult = savedInvoiceRecordSchema.array().safeParse(
-          (invoicesPayload as { invoices?: unknown }).invoices ?? [],
-        );
-
-        if (profileResult.success && profileResult.data && !hasExistingDraft) {
-          const profile = profileResult.data;
-          setSavedProfile(profile);
-          form.setValue("issuer", {
-            name: profile.name,
-            email: profile.email,
-            address: profile.address,
-            taxNumber: profile.taxNumber,
-            vatNumber: profile.vatNumber,
-          });
-          form.setValue("banking", {
-            accountName: profile.name,
-            iban: profile.iban,
-            bic: profile.bic,
-          });
-        }
-        if (profileResult.success && profileResult.data && hasExistingDraft) {
-          setSavedProfile(profileResult.data);
-        }
-        if (clientsResult.success) setClients(clientsResult.data);
-        if (invoicesResult.success) setSavedInvoices(invoicesResult.data);
-        const fetchedNumber = (nextNumberPayload as { invoiceNumber?: unknown }).invoiceNumber;
-        if (typeof fetchedNumber === "string") setNextInvoiceNumber(fetchedNumber);
-      })
-      .catch(() => {
-        if (active) setDatabaseMessage("Database is temporarily unavailable.");
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [form]);
+  }, [form, initialProfile]);
 
   useEffect(() => {
     if (!invoice?.id) return;
