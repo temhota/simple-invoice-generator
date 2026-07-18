@@ -43,7 +43,7 @@ beforeAll(async () => {
     const migration = await readFile(path.join(migrationsDirectory, migrationFile), "utf8");
     await sql.unsafe(migration);
   }
-  await sql`TRUNCATE profile, clients, invoices`;
+  await sql`TRUNCATE profile, clients, invoices, ai_usage`;
   await sql`
     INSERT INTO auth.users (id) VALUES (${firstUserId}), (${secondUserId})
     ON CONFLICT (id) DO NOTHING
@@ -143,5 +143,12 @@ describeWithDatabase("PostgreSQL persistence", () => {
     expect(await database.deleteInvoice(secondUserId, invoice.id)).toBe(false);
     expect(await database.deleteInvoice(firstUserId, invoice.id)).toBe(true);
     expect(await database.listInvoices(firstUserId)).toEqual([]);
+  });
+
+  it("limits AI description requests independently for each user", async () => {
+    expect(await database.consumeAiDescriptionRequest(firstUserId, 2)).toBe(true);
+    expect(await database.consumeAiDescriptionRequest(firstUserId, 2)).toBe(true);
+    expect(await database.consumeAiDescriptionRequest(firstUserId, 2)).toBe(false);
+    expect(await database.consumeAiDescriptionRequest(secondUserId, 2)).toBe(true);
   });
 });

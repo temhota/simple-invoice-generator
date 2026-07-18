@@ -291,3 +291,23 @@ export async function getNextInvoiceNumber(userId: string, date = new Date()): P
   }, 0);
   return `${prefix}${String(highest + 1).padStart(3, "0")}`;
 }
+
+export async function consumeAiDescriptionRequest(userId: string, limit = 20): Promise<boolean> {
+  const [row] = await db()<Array<{ request_count: number }>>`
+    INSERT INTO ai_usage (user_id, period_started_at, request_count)
+    VALUES (${userId}, NOW(), 1)
+    ON CONFLICT (user_id) DO UPDATE SET
+      period_started_at = CASE
+        WHEN ai_usage.period_started_at <= NOW() - INTERVAL '24 hours' THEN NOW()
+        ELSE ai_usage.period_started_at
+      END,
+      request_count = CASE
+        WHEN ai_usage.period_started_at <= NOW() - INTERVAL '24 hours' THEN 1
+        ELSE ai_usage.request_count + 1
+      END
+    WHERE ai_usage.period_started_at <= NOW() - INTERVAL '24 hours'
+      OR ai_usage.request_count < ${limit}
+    RETURNING request_count
+  `;
+  return Boolean(row);
+}
