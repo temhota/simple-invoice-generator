@@ -112,7 +112,7 @@ const mapInvoice = (row: InvoiceRow): SavedInvoiceRecord => {
   };
 };
 
-export async function getInitialInvoiceData(date = new Date()): Promise<InitialInvoiceData> {
+export async function getInitialInvoiceData(userId: string, date = new Date()): Promise<InitialInvoiceData> {
   const year = date.getFullYear();
   const prefix = `INV-${year}-`;
   const [row] = await db()<InitialDataRow[]>`
@@ -122,7 +122,7 @@ export async function getInitialInvoiceData(date = new Date()): Promise<InitialI
         FROM (
           SELECT name, email, address, tax_number, vat_number, iban, bic
           FROM profile
-          WHERE id = 1
+          WHERE user_id = ${userId}
         ) AS profile_row
       ) AS profile,
       COALESCE((
@@ -130,6 +130,7 @@ export async function getInitialInvoiceData(date = new Date()): Promise<InitialI
         FROM (
           SELECT id, name, email, address, vat_number, updated_at
           FROM clients
+          WHERE user_id = ${userId}
         ) AS client_row
       ), '[]'::JSONB) AS clients,
       COALESCE((
@@ -137,6 +138,7 @@ export async function getInitialInvoiceData(date = new Date()): Promise<InitialI
         FROM (
           SELECT invoice_number, status, invoice_data, created_at, updated_at, sent_at, paid_at
           FROM invoices
+          WHERE user_id = ${userId}
         ) AS invoice_row
       ), '[]'::JSONB) AS invoices
   `;
@@ -155,21 +157,21 @@ export async function getInitialInvoiceData(date = new Date()): Promise<InitialI
   };
 }
 
-export async function getProfile(): Promise<Profile | null> {
+export async function getProfile(userId: string): Promise<Profile | null> {
   const [row] = await db()<ProfileRow[]>`
     SELECT name, email, address, tax_number, vat_number, iban, bic
     FROM profile
-    WHERE id = 1
+    WHERE user_id = ${userId}
   `;
   return row ? mapProfile(row) : null;
 }
 
-export async function saveProfile(profile: Profile): Promise<Profile> {
+export async function saveProfile(userId: string, profile: Profile): Promise<Profile> {
   await db()`
-    INSERT INTO profile (id, name, email, address, tax_number, vat_number, iban, bic, updated_at)
-    VALUES (1, ${profile.name}, ${profile.email}, ${profile.address}, ${profile.taxNumber},
+    INSERT INTO profile (user_id, name, email, address, tax_number, vat_number, iban, bic, updated_at)
+    VALUES (${userId}, ${profile.name}, ${profile.email}, ${profile.address}, ${profile.taxNumber},
       ${profile.vatNumber}, ${profile.iban}, ${profile.bic}, NOW())
-    ON CONFLICT (id) DO UPDATE SET
+    ON CONFLICT (user_id) DO UPDATE SET
       name = EXCLUDED.name,
       email = EXCLUDED.email,
       address = EXCLUDED.address,
@@ -182,74 +184,79 @@ export async function saveProfile(profile: Profile): Promise<Profile> {
   return profile;
 }
 
-export async function listClients(): Promise<ClientRecord[]> {
+export async function listClients(userId: string): Promise<ClientRecord[]> {
   const rows = await db()<ClientRow[]>`
     SELECT id, name, email, address, vat_number, updated_at
     FROM clients
+    WHERE user_id = ${userId}
     ORDER BY LOWER(name)
   `;
   return rows.map(mapClient);
 }
 
-export async function saveClient(input: ClientInput): Promise<ClientRecord> {
+export async function saveClient(userId: string, input: ClientInput): Promise<ClientRecord> {
   const id = input.id ?? crypto.randomUUID();
   const [row] = await db()<ClientRow[]>`
-    INSERT INTO clients (id, name, email, address, vat_number, created_at, updated_at)
-    VALUES (${id}, ${input.name}, ${input.email}, ${input.address}, ${input.vatNumber}, NOW(), NOW())
+    INSERT INTO clients (id, user_id, name, email, address, vat_number, created_at, updated_at)
+    VALUES (${id}, ${userId}, ${input.name}, ${input.email}, ${input.address}, ${input.vatNumber}, NOW(), NOW())
     ON CONFLICT (id) DO UPDATE SET
       name = EXCLUDED.name,
       email = EXCLUDED.email,
       address = EXCLUDED.address,
       vat_number = EXCLUDED.vat_number,
       updated_at = EXCLUDED.updated_at
+    WHERE clients.user_id = EXCLUDED.user_id
     RETURNING id, name, email, address, vat_number, updated_at
   `;
   if (!row) throw new Error("Client was not saved");
   return mapClient(row);
 }
 
-export async function deleteClient(id: string): Promise<boolean> {
-  const result = await db()`DELETE FROM clients WHERE id = ${id}`;
+export async function deleteClient(userId: string, id: string): Promise<boolean> {
+  const result = await db()`DELETE FROM clients WHERE id = ${id} AND user_id = ${userId}`;
   return result.count > 0;
 }
 
-export async function listInvoices(): Promise<SavedInvoiceRecord[]> {
+export async function listInvoices(userId: string): Promise<SavedInvoiceRecord[]> {
   const rows = await db()<InvoiceRow[]>`
     SELECT status, invoice_data, created_at, updated_at, sent_at, paid_at
     FROM invoices
+    WHERE user_id = ${userId}
     ORDER BY updated_at DESC
   `;
   return rows.map(mapInvoice);
 }
 
-export async function saveInvoice(invoice: Invoice): Promise<SavedInvoiceRecord> {
+export async function saveInvoice(userId: string, invoice: Invoice): Promise<SavedInvoiceRecord> {
   const [row] = await db()<InvoiceRow[]>`
     INSERT INTO invoices (
-      id, invoice_number, status, invoice_data, created_at, updated_at, sent_at, paid_at
+      id, user_id, invoice_number, status, invoice_data, created_at, updated_at, sent_at, paid_at
     )
     VALUES (
-      ${invoice.id}, ${invoice.invoiceNumber}, 'draft', ${db().json(invoice)}, NOW(), NOW(), NULL, NULL
+      ${invoice.id}, ${userId}, ${invoice.invoiceNumber}, 'draft', ${db().json(invoice)}, NOW(), NOW(), NULL, NULL
     )
     ON CONFLICT (id) DO UPDATE SET
       invoice_number = EXCLUDED.invoice_number,
       invoice_data = EXCLUDED.invoice_data,
       updated_at = EXCLUDED.updated_at
+    WHERE invoices.user_id = EXCLUDED.user_id
     RETURNING status, invoice_data, created_at, updated_at, sent_at, paid_at
   `;
   if (!row) throw new Error("Invoice was not saved");
   return mapInvoice(row);
 }
 
-export async function getInvoice(id: string): Promise<SavedInvoiceRecord | null> {
+export async function getInvoice(userId: string, id: string): Promise<SavedInvoiceRecord | null> {
   const [row] = await db()<InvoiceRow[]>`
     SELECT status, invoice_data, created_at, updated_at, sent_at, paid_at
     FROM invoices
-    WHERE id = ${id}
+    WHERE id = ${id} AND user_id = ${userId}
   `;
   return row ? mapInvoice(row) : null;
 }
 
 export async function updateInvoiceStatus(
+  userId: string,
   id: string,
   status: InvoiceStatus,
 ): Promise<SavedInvoiceRecord | null> {
@@ -259,24 +266,24 @@ export async function updateInvoiceStatus(
       updated_at = NOW(),
       sent_at = CASE WHEN ${status} = 'sent' AND sent_at IS NULL THEN NOW() ELSE sent_at END,
       paid_at = CASE WHEN ${status} = 'paid' AND paid_at IS NULL THEN NOW() ELSE paid_at END
-    WHERE id = ${id}
+    WHERE id = ${id} AND user_id = ${userId}
     RETURNING status, invoice_data, created_at, updated_at, sent_at, paid_at
   `;
   return row ? mapInvoice(row) : null;
 }
 
-export async function deleteInvoice(id: string): Promise<boolean> {
-  const result = await db()`DELETE FROM invoices WHERE id = ${id}`;
+export async function deleteInvoice(userId: string, id: string): Promise<boolean> {
+  const result = await db()`DELETE FROM invoices WHERE id = ${id} AND user_id = ${userId}`;
   return result.count > 0;
 }
 
-export async function getNextInvoiceNumber(date = new Date()): Promise<string> {
+export async function getNextInvoiceNumber(userId: string, date = new Date()): Promise<string> {
   const year = date.getFullYear();
   const prefix = `INV-${year}-`;
   const rows = await db()<Array<{ invoice_number: string }>>`
     SELECT invoice_number
     FROM invoices
-    WHERE invoice_number LIKE ${`${prefix}%`}
+    WHERE user_id = ${userId} AND invoice_number LIKE ${`${prefix}%`}
   `;
   const highest = rows.reduce((maximum, row) => {
     const match = row.invoice_number.match(new RegExp(`^INV-${year}-(\\d+)$`));

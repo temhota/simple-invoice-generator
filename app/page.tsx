@@ -12,7 +12,7 @@ export default async function Home() {
   if (error || !data?.claims?.sub) redirect("/login");
   const userEmail = typeof data.claims.email === "string" ? data.claims.email : "Signed in";
 
-  const initialData = await getInitialInvoiceData().catch(() => null);
+  const initialData = await getInitialInvoiceData(data.claims.sub).catch(() => null);
 
   return (
     <InvoiceBuilder

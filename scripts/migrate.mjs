@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import postgres from "postgres";
 
@@ -12,8 +12,16 @@ const sql = postgres(databaseUrl, {
 });
 
 try {
-  const migration = await readFile(path.join(process.cwd(), "migrations", "001_initial.sql"), "utf8");
-  await sql.unsafe(migration);
+  const migrationsDirectory = path.join(process.cwd(), "migrations");
+  const migrations = (await readdir(migrationsDirectory))
+    .filter((file) => file.endsWith(".sql"))
+    .sort();
+
+  for (const migrationFile of migrations) {
+    const migration = await readFile(path.join(migrationsDirectory, migrationFile), "utf8");
+    await sql.unsafe(migration);
+    console.log(`Applied ${migrationFile}.`);
+  }
   console.log("PostgreSQL schema is up to date.");
 } finally {
   await sql.end();
