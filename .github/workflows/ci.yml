@@ -46,3 +46,28 @@ jobs:
 
       - name: Production build
         run: pnpm build
+
+      - name: End-to-end tests
+        uses: cypress-io/github-action@v7
+        with:
+          install: false
+          start: pnpm dev
+          wait-on: "http://localhost:3000/login"
+          wait-on-timeout: 120
+          browser: chrome
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL || 'https://example.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.E2E_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_e2e-placeholder' }}
+          NEXT_PUBLIC_SITE_URL: http://localhost:3000
+          DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
+          DATABASE_SSL: require
+          CYPRESS_E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
+          CYPRESS_E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+
+      - name: Upload Cypress failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: cypress-failure-screenshots
+          path: cypress/screenshots
+          if-no-files-found: ignore

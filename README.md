@@ -157,8 +157,11 @@ GitHub Actions runs on every pull request and every push to `main`. Concurrent r
 | Static analysis | `pnpm lint` | ESLint and Next.js correctness issues |
 | Unit tests | `pnpm test` | Money, invoice validation, formatting, and AI response contract regressions |
 | Production build | `pnpm build` | Bundling, server/client boundary, route, and prerender failures |
+| End-to-end tests | `pnpm test:e2e` | Auth redirects, unauthorized API access, live preview, local drafts, and PDF downloads |
 
 Database integration tests are enabled when `TEST_DATABASE_URL` points to a disposable PostgreSQL database; they are skipped otherwise.
+
+The Cypress suite always runs the public authentication-boundary checks. Its authenticated invoice workflow runs when CI has a dedicated Supabase test account configured through `E2E_EMAIL`, `E2E_PASSWORD`, `E2E_SUPABASE_URL`, `E2E_SUPABASE_PUBLISHABLE_KEY`, and `E2E_DATABASE_URL` repository secrets. Pull requests without those secrets still run the public smoke tests.
 
 Run the same gates locally:
 
@@ -168,6 +171,20 @@ pnpm lint
 pnpm test
 pnpm build
 ```
+
+For Cypress, start the application in one terminal and run the test runner in another:
+
+```bash
+pnpm dev
+
+# Headless
+pnpm test:e2e
+
+# Interactive
+pnpm test:e2e:open
+```
+
+Set `CYPRESS_E2E_EMAIL` and `CYPRESS_E2E_PASSWORD` in the shell to enable the authenticated workflow locally. Use a dedicated test account rather than a personal account.
 
 ## Repository map
 
