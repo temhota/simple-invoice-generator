@@ -15,7 +15,19 @@ A production-oriented invoice workspace for freelancers: build an invoice with a
 
 The main workspace keeps editing and output side by side: form changes update the invoice preview immediately, while saved profiles, clients, and invoices remain available across devices.
 
-<!-- Product screenshots will live in docs/screenshots. Keep this section close to the top of the README. -->
+<p align="center">
+  <img src="docs/screenshots/invoice-workspace.png" alt="Invoice Studio workspace with the invoice form and live document preview side by side" width="100%">
+</p>
+
+<p align="center"><em>Invoice builder and live preview, including VAT, banking details, and reverse-charge output.</em></p>
+
+The AI assistant is deliberately review-first: it returns structured output, explains the change, and waits for the user to accept or reject the suggestion.
+
+<p align="center">
+  <img src="docs/screenshots/ai-description-review.png" alt="AI writing assistant comparing an original invoice line-item description with a corrected suggestion" width="78%">
+</p>
+
+<p align="center"><em>Original and suggested descriptions remain visible until the user makes an explicit choice.</em></p>
 
 ## What it does
 
