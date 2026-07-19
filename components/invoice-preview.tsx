@@ -1,10 +1,13 @@
-import { calculateInvoiceTotals, calculateLineTotalCents, formatMoney, type Invoice } from "@/lib/invoice";
+"use client";
 
-type InvoicePreviewProps = { invoice: Invoice };
+import { useFormContext, useWatch } from "react-hook-form";
+import { calculateInvoiceTotals, calculateLineTotalCents, formatMoney, type Invoice } from "@/lib/invoice";
 
 const show = (value: string, fallback: string) => value.trim() || fallback;
 
-export function InvoicePreview({ invoice }: InvoicePreviewProps) {
+export function InvoicePreview() {
+  const { control } = useFormContext<Invoice>();
+  const invoice = useWatch({ control }) as Invoice;
   const totals = calculateInvoiceTotals(invoice.items, invoice.taxRateBps);
 
   return (

@@ -2,25 +2,15 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useMemo, useState } from "react";
-import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
+import { FormProvider, useForm, useWatch } from "react-hook-form";
 import { AppHeader } from "@/components/app-header";
-import { CurrencyField } from "@/components/currency-field";
-import { DescriptionImprovementDialog } from "@/components/description-improvement-dialog";
+import { DraftAutosave } from "@/components/invoice-form/draft-autosave";
+import { InvoiceForm } from "@/components/invoice-form/invoice-form";
 import { InvoicePreview } from "@/components/invoice-preview";
-import {
-  descriptionImprovementRequestSchema,
-  descriptionImprovementSchema,
-  type DescriptionImprovement,
-} from "@/lib/ai-description";
-import { deleteDraft, readDrafts, saveDraft, type SavedDraft } from "@/lib/drafts";
+import { deleteDraft, readDrafts, type SavedDraft } from "@/lib/drafts";
 import { clientRecordSchema, profileSchema, type ClientRecord, type Profile } from "@/lib/contacts";
-import {
-  createDefaultInvoice,
-  currencies,
-  invoiceSchema,
-  makeId,
-  type Invoice,
-} from "@/lib/invoice";
+import { readJsonResponse } from "@/lib/api-response";
+import { createDefaultInvoice, invoiceSchema, type Invoice } from "@/lib/invoice";
 import { downloadInvoicePdf } from "@/lib/pdf";
 import {
   invoiceStatusLabels,
@@ -31,12 +21,6 @@ import {
 
 type SaveState = "idle" | "saving" | "saved";
 
-type DescriptionSuggestion = {
-  itemId: string;
-  original: string;
-  improvement: DescriptionImprovement;
-};
-
 type InvoiceBuilderProps = {
   initialProfile: Profile | null;
   initialClients: ClientRecord[];
@@ -45,20 +29,6 @@ type InvoiceBuilderProps = {
   initialDataError: boolean;
   userEmail: string;
 };
-
-function ErrorMessage({ message }: { message?: string }) {
-  return message ? <p className="field-error" role="alert">{message}</p> : null;
-}
-
-async function readJsonResponse(response: Response): Promise<unknown> {
-  const body = await response.text();
-  if (!body) return null;
-  try {
-    return JSON.parse(body) as unknown;
-  } catch {
-    return null;
-  }
-}
 
 export function InvoiceBuilder({
   initialProfile,
@@ -85,16 +55,12 @@ export function InvoiceBuilder({
   const [isSavingInvoice, setIsSavingInvoice] = useState(false);
   const [nextInvoiceNumber, setNextInvoiceNumber] = useState(initialInvoice.invoiceNumber);
   const [savedProfile, setSavedProfile] = useState<Profile | null>(initialProfile);
-  const [improvingItemId, setImprovingItemId] = useState<string | null>(null);
-  const [descriptionSuggestion, setDescriptionSuggestion] = useState<DescriptionSuggestion | null>(null);
-  const [descriptionAiError, setDescriptionAiError] = useState<{ itemId: string; message: string } | null>(null);
   const form = useForm<Invoice>({
     resolver: zodResolver(invoiceSchema),
     defaultValues: initialInvoice,
     mode: "onBlur",
   });
-  const { fields, append, remove } = useFieldArray({ control: form.control, name: "items" });
-  const invoice = useWatch({ control: form.control }) as Invoice;
+  const currentInvoiceId = useWatch({ control: form.control, name: "id" });
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -121,19 +87,6 @@ export function InvoiceBuilder({
     }, 0);
     return () => window.clearTimeout(timeout);
   }, [form, initialProfile]);
-
-  useEffect(() => {
-    if (!invoice?.id) return;
-    const savingTimeout = window.setTimeout(() => setSaveState("saving"), 0);
-    const saveTimeout = window.setTimeout(() => {
-      setDrafts(saveDraft(invoice));
-      setSaveState("saved");
-    }, 500);
-    return () => {
-      window.clearTimeout(savingTimeout);
-      window.clearTimeout(saveTimeout);
-    };
-  }, [invoice]);
 
   const newInvoice = (invoiceNumber = nextInvoiceNumber) => {
     const freshInvoice = createDefaultInvoice();
@@ -163,7 +116,7 @@ export function InvoiceBuilder({
 
   const removeDraft = (id: string) => {
     setDrafts(deleteDraft(id));
-    if (invoice.id === id) newInvoice();
+    if (form.getValues("id") === id) newInvoice();
   };
 
   const exportPdf = form.handleSubmit(async (validInvoice) => {
@@ -174,65 +127,6 @@ export function InvoiceBuilder({
       setIsExporting(false);
     }
   });
-
-  const improveItemDescription = async (index: number) => {
-    const item = form.getValues(`items.${index}`);
-    const input = descriptionImprovementRequestSchema.safeParse({ description: item.description });
-    if (!input.success) {
-      form.setError(`items.${index}.description`, { message: input.error.issues[0]?.message });
-      return;
-    }
-
-    const original = input.data.description;
-    setImprovingItemId(item.id);
-    setDescriptionAiError(null);
-    form.clearErrors(`items.${index}.description`);
-
-    try {
-      const response = await fetch("/api/ai/improve-description", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description: original }),
-      });
-      const payload = await readJsonResponse(response);
-      const result = descriptionImprovementSchema.safeParse(
-        (payload as { improvement?: unknown } | null)?.improvement,
-      );
-
-      if (!response.ok || !result.success) {
-        const error = (payload as { error?: unknown } | null)?.error;
-        setDescriptionAiError({
-          itemId: item.id,
-          message: typeof error === "string" ? error : "Could not improve this description.",
-        });
-        return;
-      }
-
-      const currentItem = form.getValues("items").find((candidate) => candidate.id === item.id);
-      if (!currentItem || currentItem.description.trim() !== original) {
-        setDescriptionAiError({ itemId: item.id, message: "The description changed. Request a new suggestion." });
-        return;
-      }
-
-      setDescriptionSuggestion({ itemId: item.id, original, improvement: result.data });
-    } catch {
-      setDescriptionAiError({ itemId: item.id, message: "AI suggestion is temporarily unavailable." });
-    } finally {
-      setImprovingItemId(null);
-    }
-  };
-
-  const acceptDescriptionSuggestion = () => {
-    if (!descriptionSuggestion) return;
-    const itemIndex = form.getValues("items").findIndex((item) => item.id === descriptionSuggestion.itemId);
-    if (itemIndex >= 0) {
-      form.setValue(`items.${itemIndex}.description`, descriptionSuggestion.improvement.suggestion, {
-        shouldDirty: true,
-        shouldValidate: true,
-      });
-    }
-    setDescriptionSuggestion(null);
-  };
 
   const fetchNextNumber = async (): Promise<string | null> => {
     const response = await fetch("/api/invoices/next-number");
@@ -290,7 +184,7 @@ export function InvoiceBuilder({
 
     if (status === "sent") {
       const followingNumber = await fetchNextNumber();
-      if (followingNumber && invoice.id === updated.invoice.id) {
+      if (followingNumber && currentInvoiceId === updated.invoice.id) {
         newInvoice(followingNumber);
         setDatabaseMessage(`${updated.invoice.invoiceNumber} marked Sent. ${followingNumber} is ready.`);
         return;
@@ -307,7 +201,7 @@ export function InvoiceBuilder({
     }
     setSavedInvoices((current) => current.filter((candidate) => candidate.invoice.id !== record.invoice.id));
     const followingNumber = await fetchNextNumber();
-    if (invoice.id === record.invoice.id) newInvoice(followingNumber ?? nextInvoiceNumber);
+    if (currentInvoiceId === record.invoice.id) newInvoice(followingNumber ?? nextInvoiceNumber);
     setDatabaseMessage(`${record.invoice.invoiceNumber} deleted.`);
   };
 
@@ -397,266 +291,65 @@ export function InvoiceBuilder({
     setDatabaseMessage("Client deleted.");
   };
 
-  const currentSavedInvoice = savedInvoices.find((record) => record.invoice.id === invoice.id);
+  const currentSavedInvoice = savedInvoices.find((record) => record.invoice.id === currentInvoiceId);
 
   return (
-    <main className="app-shell">
-      <AppHeader
-        userEmail={userEmail}
-        saveState={saveState}
-        drafts={drafts}
-        savedInvoices={savedInvoices}
-        isSavingInvoice={isSavingInvoice}
-        isExporting={isExporting}
-        onNewInvoice={() => newInvoice()}
-        onLoadDraft={loadDraft}
-        onRemoveDraft={removeDraft}
-        onLoadSavedInvoice={loadSavedInvoice}
-        onChangeInvoiceStatus={changeInvoiceStatus}
-        onDeleteSavedInvoice={deleteSavedInvoice}
-        onSave={saveInvoiceToDatabase}
-        onExport={exportPdf}
-      />
+    <FormProvider {...form}>
+      <DraftAutosave onDraftsChange={setDrafts} onSaveStateChange={setSaveState} />
+      <main className="app-shell">
+        <AppHeader
+          userEmail={userEmail}
+          saveState={saveState}
+          drafts={drafts}
+          savedInvoices={savedInvoices}
+          isSavingInvoice={isSavingInvoice}
+          isExporting={isExporting}
+          onNewInvoice={() => newInvoice()}
+          onLoadDraft={loadDraft}
+          onRemoveDraft={removeDraft}
+          onLoadSavedInvoice={loadSavedInvoice}
+          onChangeInvoiceStatus={changeInvoiceStatus}
+          onDeleteSavedInvoice={deleteSavedInvoice}
+          onSave={saveInvoiceToDatabase}
+          onExport={exportPdf}
+        />
 
-      <div className="workspace" id="top">
-        <section className="editor" aria-labelledby="editor-title">
-          <div className="section-intro">
-            <p className="eyebrow">
-              {currentSavedInvoice
-                ? `Saved · ${invoiceStatusLabels[currentSavedInvoice.status]}`
-                : "New invoice"}
-            </p>
-            <h1 id="editor-title">Create your invoice</h1>
-            <p>Fill in the details. Your draft stays in this browser.</p>
-            <p className="database-message" aria-live="polite">{databaseMessage}</p>
-          </div>
-
-          <form onSubmit={exportPdf} noValidate>
-            <fieldset className="form-card">
-              <legend>Invoice details</legend>
-              <div className="form-grid invoice-details-grid">
-                <label>
-                  <span>Invoice number</span>
-                  <input {...form.register("invoiceNumber")} aria-invalid={Boolean(form.formState.errors.invoiceNumber)} />
-                  <ErrorMessage message={form.formState.errors.invoiceNumber?.message} />
-                </label>
-                <label>
-                  <span>Work start</span>
-                  <input type="date" {...form.register("workStartDate")} aria-invalid={Boolean(form.formState.errors.workStartDate)} />
-                  <ErrorMessage message={form.formState.errors.workStartDate?.message} />
-                </label>
-                <label>
-                  <span>Work end</span>
-                  <input type="date" {...form.register("workEndDate")} aria-invalid={Boolean(form.formState.errors.workEndDate)} />
-                  <ErrorMessage message={form.formState.errors.workEndDate?.message} />
-                </label>
-                <label>
-                  <span>Due date</span>
-                  <input type="date" {...form.register("dueDate")} aria-invalid={Boolean(form.formState.errors.dueDate)} />
-                  <ErrorMessage message={form.formState.errors.dueDate?.message} />
-                </label>
-              </div>
-            </fieldset>
-
-            <div className="party-form-grid">
-              {(["issuer", "client"] as const).map((party) => (
-                <fieldset className="form-card" key={party}>
-                  <legend>{party === "issuer" ? "From" : "Bill to"}</legend>
-                  <div className="stack">
-                    {party === "client" && (
-                      <div className="saved-client-controls">
-                        <label>
-                          <span>Saved clients</span>
-                          <select value={selectedClientId} onChange={(event) => chooseClient(event.target.value)}>
-                            <option value="">New client</option>
-                            {clients.map((client) => <option value={client.id} key={client.id}>{client.name}</option>)}
-                          </select>
-                        </label>
-                        <button className="button secondary delete-client-button" type="button" onClick={deleteCurrentClient} disabled={!selectedClientId}>Delete</button>
-                      </div>
-                    )}
-                    <label>
-                      <span>{party === "issuer" ? "Business name" : "Client name"}</span>
-                      <input placeholder={party === "issuer" ? "Acme Studio" : "Northstar GmbH"} {...form.register(`${party}.name`)} aria-invalid={Boolean(form.formState.errors[party]?.name)} />
-                      <ErrorMessage message={form.formState.errors[party]?.name?.message} />
-                    </label>
-                    <label>
-                      <span>Email <small>Optional</small></span>
-                      <input type="email" placeholder="hello@example.com" {...form.register(`${party}.email`)} aria-invalid={Boolean(form.formState.errors[party]?.email)} />
-                      <ErrorMessage message={form.formState.errors[party]?.email?.message} />
-                    </label>
-                    <label>
-                      <span>Address</span>
-                      <textarea rows={3} placeholder="Street, city, country" {...form.register(`${party}.address`)} aria-invalid={Boolean(form.formState.errors[party]?.address)} />
-                      <ErrorMessage message={form.formState.errors[party]?.address?.message} />
-                    </label>
-                    {party === "issuer" && (
-                      <div className="form-grid two-cols">
-                        <label>
-                          <span>Tax number <small>Optional</small></span>
-                          <input placeholder="Tax ID" {...form.register("issuer.taxNumber")} aria-invalid={Boolean(form.formState.errors.issuer?.taxNumber)} />
-                          <ErrorMessage message={form.formState.errors.issuer?.taxNumber?.message} />
-                        </label>
-                        <label>
-                          <span>VAT number <small>Optional</small></span>
-                          <input placeholder="VAT ID" {...form.register("issuer.vatNumber")} aria-invalid={Boolean(form.formState.errors.issuer?.vatNumber)} />
-                          <ErrorMessage message={form.formState.errors.issuer?.vatNumber?.message} />
-                        </label>
-                      </div>
-                    )}
-                    {party === "client" && (
-                      <label>
-                        <span>VAT number <small>Optional</small></span>
-                        <input placeholder="VAT ID" {...form.register("client.vatNumber")} aria-invalid={Boolean(form.formState.errors.client?.vatNumber)} />
-                        <ErrorMessage message={form.formState.errors.client?.vatNumber?.message} />
-                      </label>
-                    )}
-                    <button className="button secondary database-save-button" type="button" onClick={party === "issuer" ? saveProfileDetails : saveCurrentClient}>
-                      {party === "issuer" ? "Save my details" : selectedClientId ? "Update client" : "Save client"}
-                    </button>
-                  </div>
-                </fieldset>
-              ))}
+        <div className="workspace" id="top">
+          <section className="editor" aria-labelledby="editor-title">
+            <div className="section-intro">
+              <p className="eyebrow">
+                {currentSavedInvoice
+                  ? `Saved · ${invoiceStatusLabels[currentSavedInvoice.status]}`
+                  : "New invoice"}
+              </p>
+              <h1 id="editor-title">Create your invoice</h1>
+              <p>Fill in the details. Your draft stays in this browser.</p>
+              <p className="database-message" aria-live="polite">{databaseMessage}</p>
             </div>
 
-            <fieldset className="form-card items-card">
-              <legend className="sr-only">Line items</legend>
-              <div className="legend-row">
-                <span>Line items</span>
-                <button className="text-button" type="button" onClick={() => append({ id: makeId(), description: "", hours: 1, unitPriceCents: 0 })}>+ Add item</button>
-              </div>
-              <div className="items-list">
-                {fields.map((field, index) => {
-                  const itemId = invoice.items?.[index]?.id;
-                  return (
-                    <div className="item-row" key={field.id}>
-                    <div className="item-description">
-                      <div className="item-description-heading">
-                        <label htmlFor={`item-description-${field.id}`}>Description</label>
-                        <button
-                          className="ai-improve-button"
-                          type="button"
-                          onClick={() => improveItemDescription(index)}
-                          disabled={improvingItemId !== null}
-                        >
-                          {improvingItemId === itemId ? "Improving…" : "✦ Improve with AI"}
-                        </button>
-                      </div>
-                      <input id={`item-description-${field.id}`} placeholder="Website design" {...form.register(`items.${index}.description`)} aria-invalid={Boolean(form.formState.errors.items?.[index]?.description)} />
-                      <ErrorMessage message={form.formState.errors.items?.[index]?.description?.message} />
-                      {descriptionAiError?.itemId === itemId && (
-                        <p className="field-error" role="alert">{descriptionAiError.message}</p>
-                      )}
-                    </div>
-                    <label>
-                      <span>Hours</span>
-                      <input type="number" min="0.25" max="9999" step="0.25" {...form.register(`items.${index}.hours`, { valueAsNumber: true })} aria-invalid={Boolean(form.formState.errors.items?.[index]?.hours)} />
-                      <ErrorMessage message={form.formState.errors.items?.[index]?.hours?.message} />
-                    </label>
-                    <label>
-                      <span>Hourly rate</span>
-                      <Controller control={form.control} name={`items.${index}.unitPriceCents`} render={({ field: priceField }) => (
-                        <CurrencyField value={priceField.value} onChange={priceField.onChange} onBlur={priceField.onBlur} aria-invalid={Boolean(form.formState.errors.items?.[index]?.unitPriceCents)} />
-                      )} />
-                      <ErrorMessage message={form.formState.errors.items?.[index]?.unitPriceCents?.message} />
-                    </label>
-                    <button className="remove-button" type="button" onClick={() => remove(index)} disabled={fields.length === 1} aria-label={`Remove item ${index + 1}`}>×</button>
-                    </div>
-                  );
-                })}
-              </div>
-              <ErrorMessage message={form.formState.errors.items?.root?.message ?? form.formState.errors.items?.message} />
-            </fieldset>
+            <InvoiceForm
+              clients={clients}
+              selectedClientId={selectedClientId}
+              isSavingInvoice={isSavingInvoice}
+              isExporting={isExporting}
+              onSelectClient={chooseClient}
+              onSaveProfile={saveProfileDetails}
+              onSaveClient={saveCurrentClient}
+              onDeleteClient={deleteCurrentClient}
+              onSaveInvoice={saveInvoiceToDatabase}
+              onExport={exportPdf}
+            />
+          </section>
 
-            {descriptionSuggestion && (
-              <DescriptionImprovementDialog
-                original={descriptionSuggestion.original}
-                improvement={descriptionSuggestion.improvement}
-                onAccept={acceptDescriptionSuggestion}
-                onClose={() => setDescriptionSuggestion(null)}
-              />
-            )}
-
-            <fieldset className="form-card">
-              <legend>Banking information</legend>
-              <div className="form-grid three-cols banking-grid">
-                <label>
-                  <span>Name</span>
-                  <input placeholder="Acme Studio" {...form.register("banking.accountName")} aria-invalid={Boolean(form.formState.errors.banking?.accountName)} />
-                  <ErrorMessage message={form.formState.errors.banking?.accountName?.message} />
-                </label>
-                <label>
-                  <span>IBAN</span>
-                  <input autoCapitalize="characters" spellCheck={false} placeholder="DE00 0000 0000 0000 0000 00" {...form.register("banking.iban")} aria-invalid={Boolean(form.formState.errors.banking?.iban)} />
-                  <ErrorMessage message={form.formState.errors.banking?.iban?.message} />
-                </label>
-                <label>
-                  <span>BIC</span>
-                  <input autoCapitalize="characters" spellCheck={false} placeholder="ABCDEFGH" {...form.register("banking.bic")} aria-invalid={Boolean(form.formState.errors.banking?.bic)} />
-                  <ErrorMessage message={form.formState.errors.banking?.bic?.message} />
-                </label>
-              </div>
-            </fieldset>
-
-            <fieldset className="form-card">
-              <legend>Payment details</legend>
-              <div className="form-grid payment-grid">
-                <label>
-                  <span>Currency</span>
-                  <select {...form.register("currency")}>
-                    {currencies.map((currency) => <option value={currency} key={currency}>{currency}</option>)}
-                  </select>
-                </label>
-                <label>
-                  <span>VAT rate (%)</span>
-                  <Controller control={form.control} name="taxRateBps" render={({ field }) => (
-                    <select disabled={invoice.reverseCharge} value={field.value} onChange={(event) => field.onChange(Number(event.target.value))} onBlur={field.onBlur}>
-                      <option value={0}>0%</option>
-                      <option value={1900}>19%</option>
-                    </select>
-                  )} />
-                </label>
-                <label className="reverse-charge-field">
-                  <Controller control={form.control} name="reverseCharge" render={({ field }) => (
-                    <span className="checkbox-control">
-                      <input
-                        type="checkbox"
-                        checked={field.value}
-                        onChange={(event) => {
-                          field.onChange(event.target.checked);
-                          if (event.target.checked) form.setValue("taxRateBps", 0, { shouldValidate: true, shouldDirty: true });
-                        }}
-                        onBlur={field.onBlur}
-                      />
-                      <span>Apply reverse charge</span>
-                    </span>
-                  )} />
-                  <small>VAT is set to 0% and locked.</small>
-                </label>
-                <label className="notes-field">
-                  <span>Notes <small>Optional</small></span>
-                  <textarea rows={3} placeholder="Payment terms or a thank-you note" {...form.register("notes")} />
-                  <ErrorMessage message={form.formState.errors.notes?.message} />
-                </label>
-              </div>
-            </fieldset>
-
-            <div className="mobile-actions">
-              <button className="button primary" type="button" onClick={saveInvoiceToDatabase} disabled={isSavingInvoice}>
-                {isSavingInvoice ? "Saving…" : "Save"}
-              </button>
-              <button className="button secondary" type="submit" disabled={isExporting}>
-                {isExporting ? "Preparing PDF…" : "Download PDF"}
-              </button>
+          <aside className="preview-panel">
+            <div className="preview-toolbar">
+              <span>Live preview</span>
+              <span>Updates automatically</span>
             </div>
-          </form>
-        </section>
-
-        <aside className="preview-panel">
-          <div className="preview-toolbar"><span>Live preview</span><span>Updates automatically</span></div>
-          <InvoicePreview invoice={invoice} />
-        </aside>
-      </div>
-    </main>
+            <InvoicePreview />
+          </aside>
+        </div>
+      </main>
+    </FormProvider>
   );
 }
