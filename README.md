@@ -196,11 +196,3 @@ migrations/     PostgreSQL schema, ownership, RLS, and AI usage limits
 scripts/        migration runner
 .github/        CI workflow
 ```
-
-## Future work
-
-- Visual regression tests for the preview and generated PDF
-- Normalized line items for revenue and client reporting
-- Configurable taxes, locales, payment terms, and invoice templates
-- Accessible focus trapping and broader keyboard coverage for dialogs
-- Optional server-side PDF archiving and email delivery
