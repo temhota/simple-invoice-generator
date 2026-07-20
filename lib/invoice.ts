@@ -73,8 +73,8 @@ export const invoiceSchema = z
 
 export type Invoice = z.infer<typeof invoiceSchema>;
 
-// Drafts may be incomplete, but their persisted shape must remain safe to load.
-export const invoiceDraftSchema = z.object({
+// A recovery snapshot may be incomplete, but its persisted shape must remain safe to load.
+export const invoiceRecoverySchema = z.object({
   id: z.string(),
   invoiceNumber: z.string(),
   workStartDate: z.string(),

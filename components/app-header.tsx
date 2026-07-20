@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { signOut } from "@/app/auth/actions";
-import type { SavedDraft } from "@/lib/drafts";
 import {
   invoiceStatusLabels,
   invoiceStatuses,
@@ -13,43 +12,33 @@ import {
 type AppHeaderProps = {
   userEmail: string;
   saveState: "idle" | "saving" | "saved";
-  drafts: SavedDraft[];
   savedInvoices: SavedInvoiceRecord[];
   isSavingInvoice: boolean;
   isExporting: boolean;
   onNewInvoice: () => void;
-  onLoadDraft: (draft: SavedDraft) => void;
-  onRemoveDraft: (id: string) => void;
   onLoadSavedInvoice: (invoice: SavedInvoiceRecord) => void;
   onChangeInvoiceStatus: (invoice: SavedInvoiceRecord, status: InvoiceStatus) => void;
   onDeleteSavedInvoice: (invoice: SavedInvoiceRecord) => void;
   onSave: () => void;
   onExport: () => void;
+  onSignOut: () => void;
 };
 
 export function AppHeader({
   userEmail,
   saveState,
-  drafts,
   savedInvoices,
   isSavingInvoice,
   isExporting,
   onNewInvoice,
-  onLoadDraft,
-  onRemoveDraft,
   onLoadSavedInvoice,
   onChangeInvoiceStatus,
   onDeleteSavedInvoice,
   onSave,
   onExport,
+  onSignOut,
 }: AppHeaderProps) {
-  const [draftsOpen, setDraftsOpen] = useState(false);
   const [savedInvoicesOpen, setSavedInvoicesOpen] = useState(false);
-
-  const closeMenus = () => {
-    setDraftsOpen(false);
-    setSavedInvoicesOpen(false);
-  };
 
   return (
     <header className="app-header">
@@ -60,59 +49,26 @@ export function AppHeader({
       <div className="header-actions">
         <span className="save-status" aria-live="polite">
           <span className={`status-dot ${saveState}`} />
-          {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved locally" : "Local drafts"}
+          {saveState === "saving" ? "Backing up…" : saveState === "saved" ? "Backed up locally" : "Recovery enabled"}
         </span>
-        <div className="draft-menu-wrap">
+        <div className="invoice-menu-wrap">
           <button
             className="button secondary"
             type="button"
-            onClick={() => {
-              setDraftsOpen((open) => !open);
-              setSavedInvoicesOpen(false);
-            }}
-            aria-expanded={draftsOpen}
-          >
-            Drafts <span className="count">{drafts.length}</span>
-          </button>
-          {draftsOpen && (
-            <div className="draft-menu" aria-label="Saved drafts">
-              <div className="draft-menu-head">
-                <strong>Local drafts</strong>
-                <button type="button" onClick={() => { closeMenus(); onNewInvoice(); }}>+ New</button>
-              </div>
-              {drafts.length === 0 ? <p className="empty-state">No saved drafts yet.</p> : drafts.map((draft) => (
-                <div className="draft-row" key={draft.invoice.id}>
-                  <button type="button" className="draft-load" onClick={() => { closeMenus(); onLoadDraft(draft); }}>
-                    <strong>{draft.invoice.invoiceNumber || "Untitled invoice"}</strong>
-                    <span>{draft.invoice.client.name || "No client"} · {new Date(draft.updatedAt).toLocaleString()}</span>
-                  </button>
-                  <button className="icon-button" type="button" aria-label={`Delete ${draft.invoice.invoiceNumber || "draft"}`} onClick={() => onRemoveDraft(draft.invoice.id)}>×</button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="draft-menu-wrap">
-          <button
-            className="button secondary"
-            type="button"
-            onClick={() => {
-              setSavedInvoicesOpen((open) => !open);
-              setDraftsOpen(false);
-            }}
+            onClick={() => setSavedInvoicesOpen((open) => !open)}
             aria-expanded={savedInvoicesOpen}
           >
             Invoices <span className="count">{savedInvoices.length}</span>
           </button>
           {savedInvoicesOpen && (
-            <div className="draft-menu invoice-menu" aria-label="Saved invoices">
-              <div className="draft-menu-head">
+            <div className="invoice-menu" aria-label="Saved invoices">
+              <div className="invoice-menu-head">
                 <strong>Saved invoices</strong>
-                <button type="button" onClick={() => { closeMenus(); onNewInvoice(); }}>+ New</button>
+                <button type="button" onClick={() => { setSavedInvoicesOpen(false); onNewInvoice(); }}>+ New</button>
               </div>
               {savedInvoices.length === 0 ? <p className="empty-state">No saved invoices yet.</p> : savedInvoices.map((record) => (
                 <div className="invoice-record-row" key={record.invoice.id}>
-                  <button type="button" className="draft-load" onClick={() => { closeMenus(); onLoadSavedInvoice(record); }}>
+                  <button type="button" className="invoice-load" onClick={() => { setSavedInvoicesOpen(false); onLoadSavedInvoice(record); }}>
                     <strong>{record.invoice.invoiceNumber}</strong>
                     <span>{record.invoice.client.name} · {new Date(record.updatedAt).toLocaleDateString()}</span>
                   </button>
@@ -136,7 +92,7 @@ export function AppHeader({
         <button className="button secondary header-download" type="button" onClick={onExport} disabled={isExporting}>
           {isExporting ? "Preparing…" : "Download PDF"}
         </button>
-        <form action={signOut} className="account-control">
+        <form action={signOut} className="account-control" onSubmit={onSignOut}>
           <span title={userEmail}>{userEmail}</span>
           <button className="button secondary" type="submit">Sign out</button>
         </form>

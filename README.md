@@ -35,7 +35,7 @@ The AI assistant is deliberately review-first: it returns structured output, exp
 - Shows a live document preview and exports the same validated data to PDF.
 - Stores reusable profiles, clients, and invoice records in PostgreSQL.
 - Tracks invoice lifecycle as draft, sent, or paid and generates the next invoice number per user.
-- Keeps up to ten intentionally local browser drafts for quick recovery.
+- Keeps one user-scoped browser recovery snapshot for unsaved changes.
 - Uses `gpt-5-nano` to improve a line-item description, then shows the original and suggestion before applying anything.
 - Supports EUR, USD, and GBP without floating-point money calculations.
 
@@ -48,7 +48,7 @@ flowchart LR
     API["Route Handlers\nREST + Zod validation"]
     Auth["Supabase Auth\nsigned session cookies"]
     DB[("Supabase PostgreSQL\nprofiles · clients · invoices")]
-    Local[("localStorage\nup to 10 local drafts")]
+    Local[("localStorage\none recovery snapshot")]
     AI["OpenAI Responses API\ngpt-5-nano"]
     PDF["jsPDF\nclient-side export"]
 
@@ -73,7 +73,7 @@ The authenticated page loads profile, clients, invoices, and the next invoice nu
 | Integer cents and basis points | Avoids floating-point rounding errors in prices and VAT. One deterministic calculation path powers preview and PDF. |
 | Explicit AI review step | AI never silently rewrites billable work. The user compares both versions and decides whether to apply the suggestion. |
 | Server-first initial load | Avoids a client-side request waterfall and renders authenticated data from one aggregated PostgreSQL query. |
-| Cloud records plus local drafts | Important records are available across devices; incomplete scratch work can remain local and fast. |
+| Cloud drafts plus local recovery | PostgreSQL is the canonical invoice store; one hidden browser snapshot protects unsaved edits from an accidental refresh. |
 | Per-user invoice numbering | `INV-YYYY-NNN` advances independently for every account and is protected by a database uniqueness constraint. |
 | Client-side PDF generation | Export is immediate and does not require storing a generated document on the server. |
 
@@ -89,7 +89,7 @@ Security is enforced in layers rather than relying on the UI:
 6. `DATABASE_URL` and `OPENAI_API_KEY` are server-only environment variables. They are never exposed through `NEXT_PUBLIC_*` names.
 7. AI requests use `store: false`, a hashed safety identifier, structured output validation, and a per-user limit of 20 requests per 24-hour window.
 
-The application does not store generated PDF files. Local drafts live in that browser's `localStorage`, so users should not use the draft feature on an untrusted shared device.
+The application does not store generated PDF files. One recovery snapshot is scoped to the signed-in account in browser `localStorage` and is cleared after a successful cloud save or sign-out. Users should still avoid editing sensitive invoices on an untrusted shared device.
 
 ## Why REST instead of GraphQL?
 
@@ -102,7 +102,7 @@ GraphQL would become attractive if the product gained several independent client
 - **Direct PostgreSQL access:** keeps the server data layer small, but schema changes require explicit SQL migrations and careful connection management in serverless environments.
 - **Invoice JSON snapshot:** makes historical invoices easy to reconstruct as their full document shape, but reporting on individual line items would benefit from normalized tables later.
 - **Client-side PDF:** provides fast, private export, but font embedding and pixel-perfect parity across every browser need dedicated visual regression coverage.
-- **`localStorage` drafts:** work offline and require no extra API, but do not sync across browsers and are not encrypted independently of the device.
+- **Browser recovery snapshot:** protects one unsaved invoice without adding a second draft list, but does not sync across browsers and is not encrypted independently of the device.
 - **Fixed VAT choices:** 0% and 19% plus reverse charge cover the initial use case, not every jurisdiction or tax regime.
 - **Simple AI rate limit:** a PostgreSQL-backed 24-hour window is transparent and sufficient at this scale; a high-traffic system would move this concern to a dedicated distributed limiter.
 - **Single app repository:** keeps UI, server endpoints, migrations, and tests close together, while larger teams might split ownership and deployment boundaries.
@@ -157,7 +157,7 @@ GitHub Actions runs on every pull request and every push to `main`. Concurrent r
 | Static analysis | `pnpm lint` | ESLint and Next.js correctness issues |
 | Unit tests | `pnpm test` | Money, invoice validation, formatting, and AI response contract regressions |
 | Production build | `pnpm build` | Bundling, server/client boundary, route, and prerender failures |
-| End-to-end tests | `pnpm test:e2e` | Auth redirects, unauthorized API access, live preview, local drafts, and PDF downloads |
+| End-to-end tests | `pnpm test:e2e` | Auth redirects, unauthorized API access, live preview, recovery after reload, and PDF downloads |
 
 Database integration tests are enabled when `TEST_DATABASE_URL` points to a disposable PostgreSQL database; they are skipped otherwise.
 

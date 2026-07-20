@@ -4,13 +4,13 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useMemo, useState } from "react";
 import { FormProvider, useForm, useWatch } from "react-hook-form";
 import { AppHeader } from "@/components/app-header";
-import { DraftAutosave } from "@/components/invoice-form/draft-autosave";
 import { InvoiceForm } from "@/components/invoice-form/invoice-form";
+import { RecoveryAutosave } from "@/components/invoice-form/recovery-autosave";
 import { InvoicePreview } from "@/components/invoice-preview";
-import { deleteDraft, readDrafts, type SavedDraft } from "@/lib/drafts";
 import { clientRecordSchema, profileSchema, type ClientRecord, type Profile } from "@/lib/contacts";
 import { readJsonResponse } from "@/lib/api-response";
 import { createDefaultInvoice, invoiceSchema, type Invoice } from "@/lib/invoice";
+import { clearInvoiceRecovery, readInvoiceRecovery } from "@/lib/invoice-recovery";
 import { downloadInvoicePdf } from "@/lib/pdf";
 import {
   invoiceStatusLabels,
@@ -43,7 +43,6 @@ export function InvoiceBuilder({
     if (initialNextInvoiceNumber) invoice.invoiceNumber = initialNextInvoiceNumber;
     return invoice;
   }, [initialNextInvoiceNumber]);
-  const [drafts, setDrafts] = useState<SavedDraft[]>([]);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [isExporting, setIsExporting] = useState(false);
   const [clients, setClients] = useState<ClientRecord[]>(initialClients);
@@ -64,10 +63,9 @@ export function InvoiceBuilder({
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
-      const stored = readDrafts();
-      setDrafts(stored);
-      if (stored[0]) {
-        form.reset(stored[0].invoice);
+      const recovery = readInvoiceRecovery(userEmail);
+      if (recovery) {
+        form.reset(recovery.invoice);
         return;
       }
       if (initialProfile) {
@@ -86,9 +84,10 @@ export function InvoiceBuilder({
       }
     }, 0);
     return () => window.clearTimeout(timeout);
-  }, [form, initialProfile]);
+  }, [form, initialProfile, userEmail]);
 
   const newInvoice = (invoiceNumber = nextInvoiceNumber) => {
+    clearInvoiceRecovery(userEmail);
     const freshInvoice = createDefaultInvoice();
     freshInvoice.invoiceNumber = invoiceNumber;
     if (savedProfile) {
@@ -108,15 +107,6 @@ export function InvoiceBuilder({
     form.reset(freshInvoice);
     setSelectedClientId("");
     setDatabaseMessage(`New invoice ${invoiceNumber} is ready.`);
-  };
-
-  const loadDraft = (draft: SavedDraft) => {
-    form.reset(draft.invoice);
-  };
-
-  const removeDraft = (id: string) => {
-    setDrafts(deleteDraft(id));
-    if (form.getValues("id") === id) newInvoice();
   };
 
   const exportPdf = form.handleSubmit(async (validInvoice) => {
@@ -155,6 +145,11 @@ export function InvoiceBuilder({
       }
       const saved = result.data;
       setSavedInvoices((current) => [saved, ...current.filter((record) => record.invoice.id !== saved.invoice.id)]);
+      if (JSON.stringify(form.getValues()) === JSON.stringify(validInvoice)) {
+        clearInvoiceRecovery(userEmail);
+        form.reset(saved.invoice);
+        setSaveState("idle");
+      }
       await fetchNextNumber();
       setDatabaseMessage(`${saved.invoice.invoiceNumber} saved as ${invoiceStatusLabels[saved.status]}.`);
     } finally {
@@ -163,7 +158,9 @@ export function InvoiceBuilder({
   });
 
   const loadSavedInvoice = (record: SavedInvoiceRecord) => {
+    clearInvoiceRecovery(userEmail);
     form.reset(record.invoice);
+    setSaveState("idle");
     setDatabaseMessage(`${record.invoice.invoiceNumber} loaded (${invoiceStatusLabels[record.status]}).`);
   };
 
@@ -295,23 +292,21 @@ export function InvoiceBuilder({
 
   return (
     <FormProvider {...form}>
-      <DraftAutosave onDraftsChange={setDrafts} onSaveStateChange={setSaveState} />
+      <RecoveryAutosave userKey={userEmail} onSaveStateChange={setSaveState} />
       <main className="app-shell">
         <AppHeader
           userEmail={userEmail}
           saveState={saveState}
-          drafts={drafts}
           savedInvoices={savedInvoices}
           isSavingInvoice={isSavingInvoice}
           isExporting={isExporting}
           onNewInvoice={() => newInvoice()}
-          onLoadDraft={loadDraft}
-          onRemoveDraft={removeDraft}
           onLoadSavedInvoice={loadSavedInvoice}
           onChangeInvoiceStatus={changeInvoiceStatus}
           onDeleteSavedInvoice={deleteSavedInvoice}
           onSave={saveInvoiceToDatabase}
           onExport={exportPdf}
+          onSignOut={() => clearInvoiceRecovery(userEmail)}
         />
 
         <div className="workspace" id="top">
@@ -323,7 +318,7 @@ export function InvoiceBuilder({
                   : "New invoice"}
               </p>
               <h1 id="editor-title">Create your invoice</h1>
-              <p>Fill in the details. Your draft stays in this browser.</p>
+              <p>Fill in the details. Unsaved changes are backed up in this browser.</p>
               <p className="database-message" aria-live="polite">{databaseMessage}</p>
             </div>
 

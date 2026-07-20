@@ -27,7 +27,7 @@ describe("authenticated invoice workflow", () => {
     cy.contains("h1", "Create your invoice").should("be.visible");
   });
 
-  it("updates the live preview and keeps a local draft", () => {
+  it("updates the live preview and recovers unsaved changes", () => {
     cy.get('input[placeholder="Website design"]').first().clear().type("Accessibility audit");
     cy.contains("label", "Hours").find("input").clear().type("2");
     cy.contains("label", "Hourly rate").find("input").clear().type("150").blur();
@@ -35,7 +35,11 @@ describe("authenticated invoice workflow", () => {
     cy.get(".invoice-paper")
       .should("contain.text", "Accessibility audit")
       .and("contain.text", "€ 300.00");
-    cy.contains("button", /Drafts\s*1/, { timeout: 5_000 }).should("be.visible");
+    cy.contains("Backed up locally", { timeout: 5_000 }).should("be.visible");
+
+    cy.reload();
+    cy.get('input[placeholder="Website design"]').first().should("have.value", "Accessibility audit");
+    cy.get(".invoice-paper").should("contain.text", "€ 300.00");
   });
 
   it("exports a validated invoice as PDF", () => {
