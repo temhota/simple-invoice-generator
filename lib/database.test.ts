@@ -33,7 +33,7 @@ beforeAll(async () => {
     DO $$
     BEGIN
       IF TO_REGPROCEDURE('auth.uid()') IS NULL THEN
-        EXECUTE 'CREATE FUNCTION auth.uid() RETURNS UUID LANGUAGE SQL STABLE AS ''SELECT NULL::UUID''';
+        EXECUTE 'CREATE FUNCTION auth.uid() RETURNS UUID LANGUAGE SQL STABLE AS ''SELECT NULLIF(current_setting(''''request.jwt.claim.sub'''', true), '''''''')::UUID''';
       END IF;
     END $$
   `);
@@ -41,7 +41,8 @@ beforeAll(async () => {
   const migrations = (await readdir(migrationsDirectory))
     .filter((file) => file.endsWith(".sql"))
     .sort();
-  for (const migrationFile of migrations) {
+  // The production runner replays every migration on each invocation.
+  for (const migrationFile of [...migrations, ...migrations]) {
     const migration = await readFile(
       path.join(migrationsDirectory, migrationFile),
       "utf8",
@@ -71,6 +72,58 @@ afterAll(async () => {
 });
 
 describeWithDatabase("PostgreSQL persistence", () => {
+  it("prevents API users from resetting or creating AI quota records", async () => {
+    const sql = postgres(testDatabaseUrl!, {
+      max: 1,
+      prepare: false,
+      ssl: process.env.DATABASE_SSL === "disable" ? false : "require",
+    });
+    try {
+      await sql.begin(async (transaction) => {
+        await transaction`CREATE ROLE invoice_quota_test_client NOLOGIN`;
+        await transaction`GRANT USAGE ON SCHEMA public, auth TO invoice_quota_test_client`;
+        await transaction`GRANT SELECT, INSERT, UPDATE, DELETE ON ai_usage TO invoice_quota_test_client`;
+        await transaction`
+          INSERT INTO ai_usage (user_id, request_count) VALUES (${firstUserId}, 20)
+          ON CONFLICT (user_id) DO UPDATE SET request_count = 20
+        `;
+        await transaction`SELECT set_config('request.jwt.claim.sub', ${firstUserId}, true)`;
+        await transaction`SET LOCAL ROLE invoice_quota_test_client`;
+        expect(await transaction`SELECT request_count FROM ai_usage`).toEqual([
+          { request_count: 20 },
+        ]);
+        expect(
+          (
+            await transaction`UPDATE ai_usage SET request_count = 0 WHERE user_id = ${firstUserId}`
+          ).count,
+        ).toBe(0);
+        expect(
+          (
+            await transaction`DELETE FROM ai_usage WHERE user_id = ${firstUserId}`
+          ).count,
+        ).toBe(0);
+        await transaction`SELECT set_config('request.jwt.claim.sub', ${secondUserId}, true)`;
+        expect(await transaction`SELECT request_count FROM ai_usage`).toEqual(
+          [],
+        );
+        await expect(
+          transaction.savepoint(async (savepoint) => {
+            await savepoint`INSERT INTO ai_usage (user_id, request_count) VALUES (${secondUserId}, 0)`;
+          }),
+        ).rejects.toMatchObject({ code: "42501" });
+        await transaction`RESET ROLE`;
+        expect(
+          await transaction`SELECT request_count FROM ai_usage WHERE user_id = ${firstUserId}`,
+        ).toEqual([{ request_count: 20 }]);
+        await transaction`DELETE FROM ai_usage WHERE user_id = ${firstUserId}`;
+        await transaction`DROP OWNED BY invoice_quota_test_client`;
+        await transaction`DROP ROLE invoice_quota_test_client`;
+      });
+    } finally {
+      await sql.end();
+    }
+  });
+
   it("stores and updates the freelancer profile", async () => {
     const profile: Profile = {
       name: "Acme Studio",

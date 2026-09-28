@@ -8,12 +8,20 @@ export async function GET(request: Request) {
   const code = url.searchParams.get("code");
   const type = url.searchParams.get("type") as EmailOtpType | null;
   const requestedNext = url.searchParams.get("next");
-  const next = requestedNext?.startsWith("/") ? requestedNext : "/";
+  let next = new URL("/", url.origin);
+  if (requestedNext?.startsWith("/")) {
+    try {
+      const candidate = new URL(requestedNext, url.origin);
+      if (candidate.origin === url.origin) next = candidate;
+    } catch {
+      // Malformed destinations fall back to the application home page.
+    }
+  }
 
   const supabase = await createClient();
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) return NextResponse.redirect(new URL(next, url.origin));
+    if (!error) return NextResponse.redirect(next);
   }
 
   if (tokenHash && type) {
@@ -21,7 +29,7 @@ export async function GET(request: Request) {
       type,
       token_hash: tokenHash,
     });
-    if (!error) return NextResponse.redirect(new URL(next, url.origin));
+    if (!error) return NextResponse.redirect(next);
   }
 
   return NextResponse.redirect(
