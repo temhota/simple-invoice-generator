@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-const optionalEmail = z.string().trim().email("Enter a valid email").or(z.literal(""));
+const optionalEmail = z
+  .string()
+  .trim()
+  .email("Enter a valid email")
+  .or(z.literal(""));
 
 export const profileSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
@@ -12,7 +16,10 @@ export const profileSchema = z.object({
   bic: z
     .string()
     .trim()
-    .regex(/^[A-Za-z0-9]{8}(?:[A-Za-z0-9]{3})?$/, "BIC must contain 8 or 11 characters"),
+    .regex(
+      /^[A-Za-z0-9]{8}(?:[A-Za-z0-9]{3})?$/,
+      "BIC must contain 8 or 11 characters",
+    ),
 });
 
 export const clientInputSchema = z.object({

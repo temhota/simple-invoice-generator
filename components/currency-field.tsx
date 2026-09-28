@@ -11,7 +11,12 @@ type CurrencyFieldProps = Omit<
   onChange: (cents: number) => void;
 };
 
-export function CurrencyField({ value, onChange, onBlur, ...props }: CurrencyFieldProps) {
+export function CurrencyField({
+  value,
+  onChange,
+  onBlur,
+  ...props
+}: CurrencyFieldProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {

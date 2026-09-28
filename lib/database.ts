@@ -4,7 +4,9 @@ import { invoiceSchema, type Invoice } from "@/lib/invoice";
 import type { InvoiceStatus, SavedInvoiceRecord } from "@/lib/saved-invoices";
 
 type DatabaseState = { connection?: Sql };
-const globalDatabase = globalThis as typeof globalThis & { invoiceDatabase?: DatabaseState };
+const globalDatabase = globalThis as typeof globalThis & {
+  invoiceDatabase?: DatabaseState;
+};
 
 function databaseUrl(): string {
   const value = process.env.DATABASE_URL;
@@ -99,11 +101,15 @@ const mapClient = (row: ClientRow): ClientRecord => ({
 });
 
 const mapInvoice = (row: InvoiceRow): SavedInvoiceRecord => {
-  const stored = typeof row.invoice_data === "string"
-    ? JSON.parse(row.invoice_data) as Record<string, unknown>
-    : row.invoice_data;
+  const stored =
+    typeof row.invoice_data === "string"
+      ? (JSON.parse(row.invoice_data) as Record<string, unknown>)
+      : row.invoice_data;
   return {
-    invoice: invoiceSchema.parse({ ...stored, reverseCharge: stored.reverseCharge === true }),
+    invoice: invoiceSchema.parse({
+      ...stored,
+      reverseCharge: stored.reverseCharge === true,
+    }),
     status: row.status,
     createdAt: toIsoString(row.created_at),
     updatedAt: toIsoString(row.updated_at),
@@ -112,7 +118,10 @@ const mapInvoice = (row: InvoiceRow): SavedInvoiceRecord => {
   };
 };
 
-export async function getInitialInvoiceData(userId: string, date = new Date()): Promise<InitialInvoiceData> {
+export async function getInitialInvoiceData(
+  userId: string,
+  date = new Date(),
+): Promise<InitialInvoiceData> {
   const year = date.getFullYear();
   const prefix = `INV-${year}-`;
   const [row] = await db()<InitialDataRow[]>`
@@ -145,7 +154,9 @@ export async function getInitialInvoiceData(userId: string, date = new Date()): 
 
   if (!row) throw new Error("Initial invoice data was not loaded");
   const highest = row.invoices.reduce((maximum, invoiceRow) => {
-    const match = invoiceRow.invoice_number.match(new RegExp(`^INV-${year}-(\\d+)$`));
+    const match = invoiceRow.invoice_number.match(
+      new RegExp(`^INV-${year}-(\\d+)$`),
+    );
     return match ? Math.max(maximum, Number(match[1])) : maximum;
   }, 0);
 
@@ -166,7 +177,10 @@ export async function getProfile(userId: string): Promise<Profile | null> {
   return row ? mapProfile(row) : null;
 }
 
-export async function saveProfile(userId: string, profile: Profile): Promise<Profile> {
+export async function saveProfile(
+  userId: string,
+  profile: Profile,
+): Promise<Profile> {
   await db()`
     INSERT INTO profile (user_id, name, email, address, tax_number, vat_number, iban, bic, updated_at)
     VALUES (${userId}, ${profile.name}, ${profile.email}, ${profile.address}, ${profile.taxNumber},
@@ -194,7 +208,10 @@ export async function listClients(userId: string): Promise<ClientRecord[]> {
   return rows.map(mapClient);
 }
 
-export async function saveClient(userId: string, input: ClientInput): Promise<ClientRecord> {
+export async function saveClient(
+  userId: string,
+  input: ClientInput,
+): Promise<ClientRecord> {
   const id = input.id ?? crypto.randomUUID();
   const [row] = await db()<ClientRow[]>`
     INSERT INTO clients (id, user_id, name, email, address, vat_number, created_at, updated_at)
@@ -212,12 +229,18 @@ export async function saveClient(userId: string, input: ClientInput): Promise<Cl
   return mapClient(row);
 }
 
-export async function deleteClient(userId: string, id: string): Promise<boolean> {
-  const result = await db()`DELETE FROM clients WHERE id = ${id} AND user_id = ${userId}`;
+export async function deleteClient(
+  userId: string,
+  id: string,
+): Promise<boolean> {
+  const result =
+    await db()`DELETE FROM clients WHERE id = ${id} AND user_id = ${userId}`;
   return result.count > 0;
 }
 
-export async function listInvoices(userId: string): Promise<SavedInvoiceRecord[]> {
+export async function listInvoices(
+  userId: string,
+): Promise<SavedInvoiceRecord[]> {
   const rows = await db()<InvoiceRow[]>`
     SELECT status, invoice_data, created_at, updated_at, sent_at, paid_at
     FROM invoices
@@ -227,7 +250,10 @@ export async function listInvoices(userId: string): Promise<SavedInvoiceRecord[]
   return rows.map(mapInvoice);
 }
 
-export async function saveInvoice(userId: string, invoice: Invoice): Promise<SavedInvoiceRecord> {
+export async function saveInvoice(
+  userId: string,
+  invoice: Invoice,
+): Promise<SavedInvoiceRecord> {
   const [row] = await db()<InvoiceRow[]>`
     INSERT INTO invoices (
       id, user_id, invoice_number, status, invoice_data, created_at, updated_at, sent_at, paid_at
@@ -246,7 +272,10 @@ export async function saveInvoice(userId: string, invoice: Invoice): Promise<Sav
   return mapInvoice(row);
 }
 
-export async function getInvoice(userId: string, id: string): Promise<SavedInvoiceRecord | null> {
+export async function getInvoice(
+  userId: string,
+  id: string,
+): Promise<SavedInvoiceRecord | null> {
   const [row] = await db()<InvoiceRow[]>`
     SELECT status, invoice_data, created_at, updated_at, sent_at, paid_at
     FROM invoices
@@ -272,12 +301,19 @@ export async function updateInvoiceStatus(
   return row ? mapInvoice(row) : null;
 }
 
-export async function deleteInvoice(userId: string, id: string): Promise<boolean> {
-  const result = await db()`DELETE FROM invoices WHERE id = ${id} AND user_id = ${userId}`;
+export async function deleteInvoice(
+  userId: string,
+  id: string,
+): Promise<boolean> {
+  const result =
+    await db()`DELETE FROM invoices WHERE id = ${id} AND user_id = ${userId}`;
   return result.count > 0;
 }
 
-export async function getNextInvoiceNumber(userId: string, date = new Date()): Promise<string> {
+export async function getNextInvoiceNumber(
+  userId: string,
+  date = new Date(),
+): Promise<string> {
   const year = date.getFullYear();
   const prefix = `INV-${year}-`;
   const rows = await db()<Array<{ invoice_number: string }>>`
@@ -292,7 +328,10 @@ export async function getNextInvoiceNumber(userId: string, date = new Date()): P
   return `${prefix}${String(highest + 1).padStart(3, "0")}`;
 }
 
-export async function consumeAiDescriptionRequest(userId: string, limit = 20): Promise<boolean> {
+export async function consumeAiDescriptionRequest(
+  userId: string,
+  limit = 20,
+): Promise<boolean> {
   const [row] = await db()<Array<{ request_count: number }>>`
     INSERT INTO ai_usage (user_id, period_started_at, request_count)
     VALUES (${userId}, NOW(), 1)

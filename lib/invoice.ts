@@ -28,7 +28,10 @@ const bankingSchema = z.object({
   bic: z
     .string()
     .trim()
-    .regex(/^[A-Za-z0-9]{8}(?:[A-Za-z0-9]{3})?$/, "BIC must contain 8 or 11 characters"),
+    .regex(
+      /^[A-Za-z0-9]{8}(?:[A-Za-z0-9]{3})?$/,
+      "BIC must contain 8 or 11 characters",
+    ),
 });
 
 const lineItemSchema = z.object({
@@ -39,7 +42,11 @@ const lineItemSchema = z.object({
     .min(0.25, "Minimum time is 0.25 hours")
     .max(9999)
     .multipleOf(0.25, "Use 0.25-hour increments"),
-  unitPriceCents: z.number().int().min(0, "Price cannot be negative").max(999_999_999),
+  unitPriceCents: z
+    .number()
+    .int()
+    .min(0, "Price cannot be negative")
+    .max(999_999_999),
 });
 
 export const invoiceSchema = z
@@ -88,8 +95,17 @@ export const invoiceRecoverySchema = z.object({
     taxNumber: z.string(),
     vatNumber: z.string(),
   }),
-  client: z.object({ name: z.string(), email: z.string(), address: z.string(), vatNumber: z.string() }),
-  banking: z.object({ accountName: z.string(), iban: z.string(), bic: z.string() }),
+  client: z.object({
+    name: z.string(),
+    email: z.string(),
+    address: z.string(),
+    vatNumber: z.string(),
+  }),
+  banking: z.object({
+    accountName: z.string(),
+    iban: z.string(),
+    bic: z.string(),
+  }),
   items: z.array(
     z.object({
       id: z.string(),
@@ -114,14 +130,18 @@ export function calculateInvoiceTotals(
   taxRateBps: number,
 ): InvoiceTotals {
   const subtotalCents = items.reduce(
-    (sum, item) => sum + calculateLineTotalCents(item.hours, item.unitPriceCents),
+    (sum, item) =>
+      sum + calculateLineTotalCents(item.hours, item.unitPriceCents),
     0,
   );
   const taxCents = Math.round((subtotalCents * taxRateBps) / 10_000);
   return { subtotalCents, taxCents, totalCents: subtotalCents + taxCents };
 }
 
-export function calculateLineTotalCents(hours: number, hourlyRateCents: number): number {
+export function calculateLineTotalCents(
+  hours: number,
+  hourlyRateCents: number,
+): number {
   return Math.round(hours * hourlyRateCents);
 }
 

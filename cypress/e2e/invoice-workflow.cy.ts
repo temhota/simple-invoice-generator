@@ -28,9 +28,16 @@ describe("authenticated invoice workflow", () => {
   });
 
   it("updates the live preview and recovers unsaved changes", () => {
-    cy.get('input[placeholder="Website design"]').first().clear().type("Accessibility audit");
+    cy.get('input[placeholder="Website design"]')
+      .first()
+      .clear()
+      .type("Accessibility audit");
     cy.contains("label", "Hours").find("input").clear().type("2");
-    cy.contains("label", "Hourly rate").find("input").clear().type("150").blur();
+    cy.contains("label", "Hourly rate")
+      .find("input")
+      .clear()
+      .type("150")
+      .blur();
 
     cy.get(".invoice-paper")
       .should("contain.text", "Accessibility audit")
@@ -38,25 +45,45 @@ describe("authenticated invoice workflow", () => {
     cy.contains("Backed up locally", { timeout: 5_000 }).should("be.visible");
 
     cy.reload();
-    cy.get('input[placeholder="Website design"]').first().should("have.value", "Accessibility audit");
+    cy.get('input[placeholder="Website design"]')
+      .first()
+      .should("have.value", "Accessibility audit");
     cy.get(".invoice-paper").should("contain.text", "€ 300.00");
   });
 
   it("exports a validated invoice as PDF", () => {
     fieldset("From").within(() => {
       replaceInput("Business name", "E2E Studio");
-      cy.contains("label", "Email").find("input").clear().type("studio@example.com");
-      cy.contains("label", "Address").find("textarea").clear().type("Example Street 1, Berlin");
+      cy.contains("label", "Email")
+        .find("input")
+        .clear()
+        .type("studio@example.com");
+      cy.contains("label", "Address")
+        .find("textarea")
+        .clear()
+        .type("Example Street 1, Berlin");
     });
     fieldset("Bill to").within(() => {
       replaceInput("Client name", "Test Client GmbH");
-      cy.contains("label", "Email").find("input").clear().type("client@example.com");
-      cy.contains("label", "Address").find("textarea").clear().type("Client Street 2, Hamburg");
+      cy.contains("label", "Email")
+        .find("input")
+        .clear()
+        .type("client@example.com");
+      cy.contains("label", "Address")
+        .find("textarea")
+        .clear()
+        .type("Client Street 2, Hamburg");
     });
     fieldset("Line items").within(() => {
-      cy.get('input[placeholder="Website design"]').clear().type("E2E consulting");
+      cy.get('input[placeholder="Website design"]')
+        .clear()
+        .type("E2E consulting");
       cy.contains("label", "Hours").find("input").clear().type("2");
-      cy.contains("label", "Hourly rate").find("input").clear().type("100").blur();
+      cy.contains("label", "Hourly rate")
+        .find("input")
+        .clear()
+        .type("100")
+        .blur();
     });
     fieldset("Banking information").within(() => {
       replaceInput("Name", "E2E Studio");
@@ -64,11 +91,16 @@ describe("authenticated invoice workflow", () => {
       replaceInput("BIC", "BYLADEM1");
     });
 
-    cy.contains("label", "Invoice number").find("input").invoke("val").then((invoiceNumber) => {
-      cy.contains("button", "Download PDF").click();
-      cy.readFile(`cypress/downloads/${invoiceNumber}.pdf`, null, { timeout: 15_000 })
-        .its("length")
-        .should("be.greaterThan", 1_000);
-    });
+    cy.contains("label", "Invoice number")
+      .find("input")
+      .invoke("val")
+      .then((invoiceNumber) => {
+        cy.contains("button", "Download PDF").click();
+        cy.readFile(`cypress/downloads/${invoiceNumber}.pdf`, null, {
+          timeout: 15_000,
+        })
+          .its("length")
+          .should("be.greaterThan", 1_000);
+      });
   });
 });

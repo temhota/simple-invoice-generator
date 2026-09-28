@@ -10,9 +10,12 @@ export default async function Home() {
   const supabase = await createClient();
   const { data, error } = await supabase.auth.getClaims();
   if (error || !data?.claims?.sub) redirect("/login");
-  const userEmail = typeof data.claims.email === "string" ? data.claims.email : "Signed in";
+  const userEmail =
+    typeof data.claims.email === "string" ? data.claims.email : "Signed in";
 
-  const initialData = await getInitialInvoiceData(data.claims.sub).catch(() => null);
+  const initialData = await getInitialInvoiceData(data.claims.sub).catch(
+    () => null,
+  );
 
   return (
     <InvoiceBuilder

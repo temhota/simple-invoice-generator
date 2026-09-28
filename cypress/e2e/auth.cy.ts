@@ -9,9 +9,11 @@ describe("authentication boundary", () => {
   });
 
   it("rejects unauthenticated API access with JSON", () => {
-    cy.request({ url: "/api/profile", failOnStatusCode: false }).then((response) => {
-      expect(response.status).to.equal(401);
-      expect(response.body).to.deep.equal({ error: "Unauthorized" });
-    });
+    cy.request({ url: "/api/profile", failOnStatusCode: false }).then(
+      (response) => {
+        expect(response.status).to.equal(401);
+        expect(response.body).to.deep.equal({ error: "Unauthorized" });
+      },
+    );
   });
 });

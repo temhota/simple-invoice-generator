@@ -14,7 +14,8 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   const userId = await getAuthenticatedUserId();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!userId)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const payload = await request.json().catch(() => null);
   const input = descriptionImprovementRequestSchema.safeParse(payload);
@@ -27,11 +28,17 @@ export async function POST(request: Request) {
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    return NextResponse.json({ error: "AI suggestions are not configured yet." }, { status: 503 });
+    return NextResponse.json(
+      { error: "AI suggestions are not configured yet." },
+      { status: 503 },
+    );
   }
 
-  if (!await consumeAiDescriptionRequest(userId)) {
-    return NextResponse.json({ error: "Daily AI suggestion limit reached. Try again later." }, { status: 429 });
+  if (!(await consumeAiDescriptionRequest(userId))) {
+    return NextResponse.json(
+      { error: "Daily AI suggestion limit reached. Try again later." },
+      { status: 429 },
+    );
   }
 
   try {
@@ -45,17 +52,26 @@ export async function POST(request: Request) {
       store: false,
       safety_identifier: createHash("sha256").update(userId).digest("hex"),
       text: {
-        format: zodTextFormat(descriptionImprovementSchema, "invoice_description_improvement"),
+        format: zodTextFormat(
+          descriptionImprovementSchema,
+          "invoice_description_improvement",
+        ),
       },
     });
 
     if (!response.output_parsed) {
-      return NextResponse.json({ error: "AI could not produce a suggestion." }, { status: 502 });
+      return NextResponse.json(
+        { error: "AI could not produce a suggestion." },
+        { status: 502 },
+      );
     }
 
     return NextResponse.json({ improvement: response.output_parsed });
   } catch (error) {
     console.error("OpenAI description improvement failed", error);
-    return NextResponse.json({ error: "AI suggestion is temporarily unavailable." }, { status: 502 });
+    return NextResponse.json(
+      { error: "AI suggestion is temporarily unavailable." },
+      { status: 502 },
+    );
   }
 }

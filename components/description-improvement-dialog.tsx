@@ -36,13 +36,26 @@ export function DescriptionImprovementDialog({
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <section className="ai-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <section
+        className="ai-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+      >
         <div className="ai-dialog-header">
           <div>
             <p className="eyebrow">AI writing assistant</p>
             <h2 id={titleId}>Review suggested description</h2>
           </div>
-          <button ref={closeButtonRef} className="icon-button" type="button" onClick={onClose} aria-label="Close suggestion">×</button>
+          <button
+            ref={closeButtonRef}
+            className="icon-button"
+            type="button"
+            onClick={onClose}
+            aria-label="Close suggestion"
+          >
+            ×
+          </button>
         </div>
 
         <div className="ai-comparison">
@@ -59,9 +72,13 @@ export function DescriptionImprovementDialog({
         <p className="ai-explanation">{improvement.explanation}</p>
 
         <div className="ai-dialog-actions">
-          <button className="button secondary" type="button" onClick={onClose}>Keep original</button>
+          <button className="button secondary" type="button" onClick={onClose}>
+            Keep original
+          </button>
           {improvement.changed && (
-            <button className="button primary" type="button" onClick={onAccept}>Use suggestion</button>
+            <button className="button primary" type="button" onClick={onAccept}>
+              Use suggestion
+            </button>
           )}
         </div>
       </section>

@@ -67,15 +67,15 @@ The authenticated page loads profile, clients, invoices, and the next invoice nu
 
 ## Key product decisions
 
-| Decision | Why it exists |
-| --- | --- |
-| Live preview beside the form | Invoice formatting problems are visible before export, not after downloading a PDF. |
-| Integer cents and basis points | Avoids floating-point rounding errors in prices and VAT. One deterministic calculation path powers preview and PDF. |
-| Explicit AI review step | AI never silently rewrites billable work. The user compares both versions and decides whether to apply the suggestion. |
-| Server-first initial load | Avoids a client-side request waterfall and renders authenticated data from one aggregated PostgreSQL query. |
+| Decision                         | Why it exists                                                                                                             |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Live preview beside the form     | Invoice formatting problems are visible before export, not after downloading a PDF.                                       |
+| Integer cents and basis points   | Avoids floating-point rounding errors in prices and VAT. One deterministic calculation path powers preview and PDF.       |
+| Explicit AI review step          | AI never silently rewrites billable work. The user compares both versions and decides whether to apply the suggestion.    |
+| Server-first initial load        | Avoids a client-side request waterfall and renders authenticated data from one aggregated PostgreSQL query.               |
 | Cloud drafts plus local recovery | PostgreSQL is the canonical invoice store; one hidden browser snapshot protects unsaved edits from an accidental refresh. |
-| Per-user invoice numbering | `INV-YYYY-NNN` advances independently for every account and is protected by a database uniqueness constraint. |
-| Client-side PDF generation | Export is immediate and does not require storing a generated document on the server. |
+| Per-user invoice numbering       | `INV-YYYY-NNN` advances independently for every account and is protected by a database uniqueness constraint.             |
+| Client-side PDF generation       | Export is immediate and does not require storing a generated document on the server.                                      |
 
 ## Security model
 
@@ -150,14 +150,15 @@ Then open [http://localhost:3000](http://localhost:3000).
 
 GitHub Actions runs on every pull request and every push to `main`. Concurrent runs for an outdated commit are cancelled.
 
-| Step | Command | What it catches |
-| --- | --- | --- |
-| Reproducible install | `pnpm install --frozen-lockfile` | Lockfile drift and dependency resolution problems |
-| Type safety | `pnpm typecheck` | Next.js route type errors and strict TypeScript errors |
-| Static analysis | `pnpm lint` | ESLint and Next.js correctness issues |
-| Unit tests | `pnpm test` | Money, invoice validation, formatting, and AI response contract regressions |
-| Production build | `pnpm build` | Bundling, server/client boundary, route, and prerender failures |
-| End-to-end tests | `pnpm test:e2e` | Auth redirects, unauthorized API access, live preview, recovery after reload, and PDF downloads |
+| Step                 | Command                          | What it catches                                                                                 |
+| -------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Reproducible install | `pnpm install --frozen-lockfile` | Lockfile drift and dependency resolution problems                                               |
+| Formatting           | `pnpm format:check`              | Inconsistent formatting in source files and documentation                                       |
+| Type safety          | `pnpm typecheck`                 | Next.js route type errors and strict TypeScript errors                                          |
+| Static analysis      | `pnpm lint`                      | ESLint and Next.js correctness issues                                                           |
+| Unit tests           | `pnpm test`                      | Money, invoice validation, formatting, and AI response contract regressions                     |
+| Production build     | `pnpm build`                     | Bundling, server/client boundary, route, and prerender failures                                 |
+| End-to-end tests     | `pnpm test:e2e`                  | Auth redirects, unauthorized API access, live preview, recovery after reload, and PDF downloads |
 
 Database integration tests are enabled when `TEST_DATABASE_URL` points to a disposable PostgreSQL database; they are skipped otherwise.
 
@@ -168,9 +169,12 @@ Run the same gates locally:
 ```bash
 pnpm typecheck
 pnpm lint
+pnpm format:check
 pnpm test
 pnpm build
 ```
+
+Run `pnpm format` to apply Prettier formatting. The repository uses Prettier defaults; generated files and the pnpm lockfile are excluded.
 
 For Cypress, start the application in one terminal and run the test runner in another:
 

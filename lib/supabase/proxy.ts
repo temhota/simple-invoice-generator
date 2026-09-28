@@ -33,7 +33,9 @@ export async function updateSession(request: NextRequest) {
   const authRoute = pathname === "/login" || pathname.startsWith("/auth/");
 
   const redirectWithSessionCookies = (destination: string) => {
-    const redirectResponse = NextResponse.redirect(new URL(destination, request.url));
+    const redirectResponse = NextResponse.redirect(
+      new URL(destination, request.url),
+    );
     for (const cookie of response.cookies.getAll()) {
       redirectResponse.cookies.set(cookie);
     }

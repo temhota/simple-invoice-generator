@@ -50,10 +50,19 @@ export function InvoiceForm({
       <PaymentSection />
 
       <div className="mobile-actions">
-        <button className="button primary" type="button" onClick={onSaveInvoice} disabled={isSavingInvoice}>
+        <button
+          className="button primary"
+          type="button"
+          onClick={onSaveInvoice}
+          disabled={isSavingInvoice}
+        >
           {isSavingInvoice ? "Saving…" : "Save"}
         </button>
-        <button className="button secondary" type="submit" disabled={isExporting}>
+        <button
+          className="button secondary"
+          type="submit"
+          disabled={isExporting}
+        >
           {isExporting ? "Preparing PDF…" : "Download PDF"}
         </button>
       </div>

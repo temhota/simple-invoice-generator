@@ -7,10 +7,22 @@ import { AppHeader } from "@/components/app-header";
 import { InvoiceForm } from "@/components/invoice-form/invoice-form";
 import { RecoveryAutosave } from "@/components/invoice-form/recovery-autosave";
 import { InvoicePreview } from "@/components/invoice-preview";
-import { clientRecordSchema, profileSchema, type ClientRecord, type Profile } from "@/lib/contacts";
+import {
+  clientRecordSchema,
+  profileSchema,
+  type ClientRecord,
+  type Profile,
+} from "@/lib/contacts";
 import { readJsonResponse } from "@/lib/api-response";
-import { createDefaultInvoice, invoiceSchema, type Invoice } from "@/lib/invoice";
-import { clearInvoiceRecovery, readInvoiceRecovery } from "@/lib/invoice-recovery";
+import {
+  createDefaultInvoice,
+  invoiceSchema,
+  type Invoice,
+} from "@/lib/invoice";
+import {
+  clearInvoiceRecovery,
+  readInvoiceRecovery,
+} from "@/lib/invoice-recovery";
 import { downloadInvoicePdf } from "@/lib/pdf";
 import {
   invoiceStatusLabels,
@@ -40,7 +52,8 @@ export function InvoiceBuilder({
 }: InvoiceBuilderProps) {
   const initialInvoice = useMemo(() => {
     const invoice = createDefaultInvoice();
-    if (initialNextInvoiceNumber) invoice.invoiceNumber = initialNextInvoiceNumber;
+    if (initialNextInvoiceNumber)
+      invoice.invoiceNumber = initialNextInvoiceNumber;
     return invoice;
   }, [initialNextInvoiceNumber]);
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -50,10 +63,15 @@ export function InvoiceBuilder({
   const [databaseMessage, setDatabaseMessage] = useState(
     initialDataError ? "Some database data is temporarily unavailable." : "",
   );
-  const [savedInvoices, setSavedInvoices] = useState<SavedInvoiceRecord[]>(initialSavedInvoices);
+  const [savedInvoices, setSavedInvoices] =
+    useState<SavedInvoiceRecord[]>(initialSavedInvoices);
   const [isSavingInvoice, setIsSavingInvoice] = useState(false);
-  const [nextInvoiceNumber, setNextInvoiceNumber] = useState(initialInvoice.invoiceNumber);
-  const [savedProfile, setSavedProfile] = useState<Profile | null>(initialProfile);
+  const [nextInvoiceNumber, setNextInvoiceNumber] = useState(
+    initialInvoice.invoiceNumber,
+  );
+  const [savedProfile, setSavedProfile] = useState<Profile | null>(
+    initialProfile,
+  );
   const form = useForm<Invoice>({
     resolver: zodResolver(invoiceSchema),
     defaultValues: initialInvoice,
@@ -137,21 +155,30 @@ export function InvoiceBuilder({
         body: JSON.stringify(validInvoice),
       });
       const payload: unknown = await response.json();
-      const result = savedInvoiceRecordSchema.safeParse((payload as { invoice?: unknown }).invoice);
+      const result = savedInvoiceRecordSchema.safeParse(
+        (payload as { invoice?: unknown }).invoice,
+      );
       if (!response.ok || !result.success) {
         const error = (payload as { error?: unknown }).error;
-        setDatabaseMessage(typeof error === "string" ? error : "Could not save the invoice.");
+        setDatabaseMessage(
+          typeof error === "string" ? error : "Could not save the invoice.",
+        );
         return;
       }
       const saved = result.data;
-      setSavedInvoices((current) => [saved, ...current.filter((record) => record.invoice.id !== saved.invoice.id)]);
+      setSavedInvoices((current) => [
+        saved,
+        ...current.filter((record) => record.invoice.id !== saved.invoice.id),
+      ]);
       if (JSON.stringify(form.getValues()) === JSON.stringify(validInvoice)) {
         clearInvoiceRecovery(userEmail);
         form.reset(saved.invoice);
         setSaveState("idle");
       }
       await fetchNextNumber();
-      setDatabaseMessage(`${saved.invoice.invoiceNumber} saved as ${invoiceStatusLabels[saved.status]}.`);
+      setDatabaseMessage(
+        `${saved.invoice.invoiceNumber} saved as ${invoiceStatusLabels[saved.status]}.`,
+      );
     } finally {
       setIsSavingInvoice(false);
     }
@@ -161,44 +188,64 @@ export function InvoiceBuilder({
     clearInvoiceRecovery(userEmail);
     form.reset(record.invoice);
     setSaveState("idle");
-    setDatabaseMessage(`${record.invoice.invoiceNumber} loaded (${invoiceStatusLabels[record.status]}).`);
+    setDatabaseMessage(
+      `${record.invoice.invoiceNumber} loaded (${invoiceStatusLabels[record.status]}).`,
+    );
   };
 
-  const changeInvoiceStatus = async (record: SavedInvoiceRecord, status: InvoiceStatus) => {
+  const changeInvoiceStatus = async (
+    record: SavedInvoiceRecord,
+    status: InvoiceStatus,
+  ) => {
     const response = await fetch(`/api/invoices/${record.invoice.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     });
     const payload: unknown = await response.json();
-    const result = savedInvoiceRecordSchema.safeParse((payload as { invoice?: unknown }).invoice);
+    const result = savedInvoiceRecordSchema.safeParse(
+      (payload as { invoice?: unknown }).invoice,
+    );
     if (!response.ok || !result.success) {
       setDatabaseMessage("Could not update invoice status.");
       return;
     }
     const updated = result.data;
-    setSavedInvoices((current) => current.map((candidate) => candidate.invoice.id === updated.invoice.id ? updated : candidate));
+    setSavedInvoices((current) =>
+      current.map((candidate) =>
+        candidate.invoice.id === updated.invoice.id ? updated : candidate,
+      ),
+    );
 
     if (status === "sent") {
       const followingNumber = await fetchNextNumber();
       if (followingNumber && currentInvoiceId === updated.invoice.id) {
         newInvoice(followingNumber);
-        setDatabaseMessage(`${updated.invoice.invoiceNumber} marked Sent. ${followingNumber} is ready.`);
+        setDatabaseMessage(
+          `${updated.invoice.invoiceNumber} marked Sent. ${followingNumber} is ready.`,
+        );
         return;
       }
     }
-    setDatabaseMessage(`${updated.invoice.invoiceNumber} marked ${invoiceStatusLabels[status]}.`);
+    setDatabaseMessage(
+      `${updated.invoice.invoiceNumber} marked ${invoiceStatusLabels[status]}.`,
+    );
   };
 
   const deleteSavedInvoice = async (record: SavedInvoiceRecord) => {
-    const response = await fetch(`/api/invoices/${record.invoice.id}`, { method: "DELETE" });
+    const response = await fetch(`/api/invoices/${record.invoice.id}`, {
+      method: "DELETE",
+    });
     if (!response.ok) {
       setDatabaseMessage("Could not delete the invoice.");
       return;
     }
-    setSavedInvoices((current) => current.filter((candidate) => candidate.invoice.id !== record.invoice.id));
+    setSavedInvoices((current) =>
+      current.filter((candidate) => candidate.invoice.id !== record.invoice.id),
+    );
     const followingNumber = await fetchNextNumber();
-    if (currentInvoiceId === record.invoice.id) newInvoice(followingNumber ?? nextInvoiceNumber);
+    if (currentInvoiceId === record.invoice.id)
+      newInvoice(followingNumber ?? nextInvoiceNumber);
     setDatabaseMessage(`${record.invoice.invoiceNumber} deleted.`);
   };
 
@@ -223,7 +270,9 @@ export function InvoiceBuilder({
       }),
     });
     const payload: unknown = await response.json();
-    const result = profileSchema.safeParse((payload as { profile?: unknown }).profile);
+    const result = profileSchema.safeParse(
+      (payload as { profile?: unknown }).profile,
+    );
     if (response.ok && result.success) {
       setSavedProfile(result.data);
       setDatabaseMessage("Your details were saved to the database.");
@@ -236,12 +285,16 @@ export function InvoiceBuilder({
     setSelectedClientId(id);
     const client = clients.find((candidate) => candidate.id === id);
     if (!client) return;
-    form.setValue("client", {
-      name: client.name,
-      email: client.email,
-      address: client.address,
-      vatNumber: client.vatNumber,
-    }, { shouldDirty: true });
+    form.setValue(
+      "client",
+      {
+        name: client.name,
+        email: client.email,
+        address: client.address,
+        vatNumber: client.vatNumber,
+      },
+      { shouldDirty: true },
+    );
     setDatabaseMessage(`${client.name} loaded.`);
   };
 
@@ -256,7 +309,10 @@ export function InvoiceBuilder({
       response = await fetch("/api/clients", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: selectedClientId || undefined, ...form.getValues("client") }),
+        body: JSON.stringify({
+          id: selectedClientId || undefined,
+          ...form.getValues("client"),
+        }),
       });
     } catch {
       setDatabaseMessage("Could not reach the database.");
@@ -264,31 +320,43 @@ export function InvoiceBuilder({
     }
     const payload = await readJsonResponse(response);
     const result = clientRecordSchema.safeParse(
-      payload && typeof payload === "object" ? (payload as { client?: unknown }).client : undefined,
+      payload && typeof payload === "object"
+        ? (payload as { client?: unknown }).client
+        : undefined,
     );
     if (!response.ok || !result.success) {
       setDatabaseMessage("Could not save the client.");
       return;
     }
     const saved = result.data;
-    setClients((current) => [...current.filter((client) => client.id !== saved.id), saved].sort((a, b) => a.name.localeCompare(b.name)));
+    setClients((current) =>
+      [...current.filter((client) => client.id !== saved.id), saved].sort(
+        (a, b) => a.name.localeCompare(b.name),
+      ),
+    );
     setSelectedClientId(saved.id);
     setDatabaseMessage(`${saved.name} was saved to the database.`);
   };
 
   const deleteCurrentClient = async () => {
     if (!selectedClientId) return;
-    const response = await fetch(`/api/clients/${selectedClientId}`, { method: "DELETE" });
+    const response = await fetch(`/api/clients/${selectedClientId}`, {
+      method: "DELETE",
+    });
     if (!response.ok) {
       setDatabaseMessage("Could not delete the client.");
       return;
     }
-    setClients((current) => current.filter((client) => client.id !== selectedClientId));
+    setClients((current) =>
+      current.filter((client) => client.id !== selectedClientId),
+    );
     setSelectedClientId("");
     setDatabaseMessage("Client deleted.");
   };
 
-  const currentSavedInvoice = savedInvoices.find((record) => record.invoice.id === currentInvoiceId);
+  const currentSavedInvoice = savedInvoices.find(
+    (record) => record.invoice.id === currentInvoiceId,
+  );
 
   return (
     <FormProvider {...form}>
@@ -318,8 +386,13 @@ export function InvoiceBuilder({
                   : "New invoice"}
               </p>
               <h1 id="editor-title">Create your invoice</h1>
-              <p>Fill in the details. Unsaved changes are backed up in this browser.</p>
-              <p className="database-message" aria-live="polite">{databaseMessage}</p>
+              <p>
+                Fill in the details. Unsaved changes are backed up in this
+                browser.
+              </p>
+              <p className="database-message" aria-live="polite">
+                {databaseMessage}
+              </p>
             </div>
 
             <InvoiceForm

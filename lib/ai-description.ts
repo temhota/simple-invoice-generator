@@ -1,7 +1,11 @@
 import { z } from "zod";
 
 export const descriptionImprovementRequestSchema = z.object({
-  description: z.string().trim().min(3, "Enter at least 3 characters").max(500, "Keep the description under 500 characters"),
+  description: z
+    .string()
+    .trim()
+    .min(3, "Enter at least 3 characters")
+    .max(500, "Keep the description under 500 characters"),
 });
 
 export const descriptionImprovementSchema = z.object({
@@ -10,7 +14,9 @@ export const descriptionImprovementSchema = z.object({
   changed: z.boolean(),
 });
 
-export type DescriptionImprovement = z.infer<typeof descriptionImprovementSchema>;
+export type DescriptionImprovement = z.infer<
+  typeof descriptionImprovementSchema
+>;
 
 export const descriptionImprovementInstructions = `
 You improve descriptions for individual invoice line items.

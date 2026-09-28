@@ -19,7 +19,8 @@ function readCredentials(formData: FormData) {
 
 export async function signIn(formData: FormData) {
   const credentials = readCredentials(formData);
-  if (!credentials.success) redirect("/login?error=Enter+a+valid+email+and+an+8-character+password");
+  if (!credentials.success)
+    redirect("/login?error=Enter+a+valid+email+and+an+8-character+password");
 
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword(credentials.data);
@@ -29,10 +30,14 @@ export async function signIn(formData: FormData) {
 
 export async function signUp(formData: FormData) {
   const credentials = readCredentials(formData);
-  if (!credentials.success) redirect("/login?error=Enter+a+valid+email+and+an+8-character+password");
+  if (!credentials.success)
+    redirect("/login?error=Enter+a+valid+email+and+an+8-character+password");
 
   const requestHeaders = await headers();
-  const origin = process.env.NEXT_PUBLIC_SITE_URL ?? requestHeaders.get("origin") ?? "http://localhost:3000";
+  const origin =
+    process.env.NEXT_PUBLIC_SITE_URL ??
+    requestHeaders.get("origin") ??
+    "http://localhost:3000";
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signUp({
     ...credentials.data,

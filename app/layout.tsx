@@ -6,7 +6,9 @@ export const metadata: Metadata = {
   description: "Create polished invoices in your browser.",
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" data-scroll-behavior="smooth">
       <body>{children}</body>

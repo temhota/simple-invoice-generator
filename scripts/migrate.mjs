@@ -18,7 +18,10 @@ try {
     .sort();
 
   for (const migrationFile of migrations) {
-    const migration = await readFile(path.join(migrationsDirectory, migrationFile), "utf8");
+    const migration = await readFile(
+      path.join(migrationsDirectory, migrationFile),
+      "utf8",
+    );
     await sql.unsafe(migration);
     console.log(`Applied ${migrationFile}.`);
   }

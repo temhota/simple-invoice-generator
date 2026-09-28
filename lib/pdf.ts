@@ -1,8 +1,14 @@
 import type { Invoice } from "@/lib/invoice";
-import { calculateInvoiceTotals, calculateLineTotalCents, formatMoney } from "@/lib/invoice";
+import {
+  calculateInvoiceTotals,
+  calculateLineTotalCents,
+  formatMoney,
+} from "@/lib/invoice";
 
 function safeFileName(value: string): string {
-  return value.replace(/[^a-z0-9-_]+/gi, "-").replace(/^-+|-+$/g, "") || "invoice";
+  return (
+    value.replace(/[^a-z0-9-_]+/gi, "-").replace(/^-+|-+$/g, "") || "invoice"
+  );
 }
 
 export async function downloadInvoicePdf(invoice: Invoice): Promise<void> {
@@ -17,8 +23,12 @@ export async function downloadInvoicePdf(invoice: Invoice): Promise<void> {
     pdf.setDrawColor(222, 226, 230);
     pdf.line(left, y, right, y);
   };
-  const text = (value: string, x: number, currentY: number, options?: { align?: "left" | "right" }) =>
-    pdf.text(value || "—", x, currentY, options);
+  const text = (
+    value: string,
+    x: number,
+    currentY: number,
+    options?: { align?: "left" | "right" },
+  ) => pdf.text(value || "—", x, currentY, options);
 
   pdf.setTextColor(23, 32, 42);
   pdf.setFont("helvetica", "bold");
@@ -43,20 +53,33 @@ export async function downloadInvoicePdf(invoice: Invoice): Promise<void> {
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(9);
   y += 5;
-  const issuerAddress = pdf.splitTextToSize(invoice.issuer.address || "—", 72) as string[];
-  const clientAddress = pdf.splitTextToSize(invoice.client.address || "—", 72) as string[];
+  const issuerAddress = pdf.splitTextToSize(
+    invoice.issuer.address || "—",
+    72,
+  ) as string[];
+  const clientAddress = pdf.splitTextToSize(
+    invoice.client.address || "—",
+    72,
+  ) as string[];
   pdf.text(issuerAddress, left, y);
   pdf.text(clientAddress, 108, y);
   y += Math.max(issuerAddress.length, clientAddress.length) * 4 + 4;
   text(invoice.issuer.email, left, y);
   text(invoice.client.email, 108, y);
   y += 5;
-  if (invoice.issuer.taxNumber) text(`Tax no.: ${invoice.issuer.taxNumber}`, left, y);
-  if (invoice.client.vatNumber) text(`VAT no.: ${invoice.client.vatNumber}`, 108, y);
+  if (invoice.issuer.taxNumber)
+    text(`Tax no.: ${invoice.issuer.taxNumber}`, left, y);
+  if (invoice.client.vatNumber)
+    text(`VAT no.: ${invoice.client.vatNumber}`, 108, y);
   y += 5;
-  if (invoice.issuer.vatNumber) text(`VAT no.: ${invoice.issuer.vatNumber}`, left, y);
+  if (invoice.issuer.vatNumber)
+    text(`VAT no.: ${invoice.issuer.vatNumber}`, left, y);
   y += 8;
-  text(`Work period: ${invoice.workStartDate} - ${invoice.workEndDate}`, left, y);
+  text(
+    `Work period: ${invoice.workStartDate} - ${invoice.workEndDate}`,
+    left,
+    y,
+  );
   text(`Due: ${invoice.dueDate}`, 108, y);
   y += 10;
 
@@ -79,11 +102,24 @@ export async function downloadInvoicePdf(invoice: Invoice): Promise<void> {
       y = 22;
       drawHeader();
     }
-    const description = pdf.splitTextToSize(item.description || "Line item", 82) as string[];
+    const description = pdf.splitTextToSize(
+      item.description || "Line item",
+      82,
+    ) as string[];
     pdf.text(description, left + 2, y);
     text(String(item.hours), 126, y, { align: "right" });
-    text(formatMoney(item.unitPriceCents, invoice.currency), 158, y, { align: "right" });
-    text(formatMoney(calculateLineTotalCents(item.hours, item.unitPriceCents), invoice.currency), right - 2, y, { align: "right" });
+    text(formatMoney(item.unitPriceCents, invoice.currency), 158, y, {
+      align: "right",
+    });
+    text(
+      formatMoney(
+        calculateLineTotalCents(item.hours, item.unitPriceCents),
+        invoice.currency,
+      ),
+      right - 2,
+      y,
+      { align: "right" },
+    );
     y += Math.max(9, description.length * 4 + 4);
     line();
     y += 5;
@@ -102,7 +138,10 @@ export async function downloadInvoicePdf(invoice: Invoice): Promise<void> {
     y += 7;
   };
   totalRow("Subtotal", formatMoney(totals.subtotalCents, invoice.currency));
-  totalRow(`VAT (${invoice.taxRateBps / 100}%)`, formatMoney(totals.taxCents, invoice.currency));
+  totalRow(
+    `VAT (${invoice.taxRateBps / 100}%)`,
+    formatMoney(totals.taxCents, invoice.currency),
+  );
   totalRow("Total", formatMoney(totals.totalCents, invoice.currency), true);
 
   if (invoice.reverseCharge) {

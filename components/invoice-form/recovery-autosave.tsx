@@ -8,14 +8,20 @@ type RecoveryAutosaveProps = {
   onSaveStateChange: (state: "saving" | "saved") => void;
 };
 
-export function RecoveryAutosave({ userKey, onSaveStateChange }: RecoveryAutosaveProps) {
+export function RecoveryAutosave({
+  userKey,
+  onSaveStateChange,
+}: RecoveryAutosaveProps) {
   const { control } = useFormContext<Invoice>();
   const invoice = useWatch({ control }) as Invoice;
   const { isDirty } = useFormState({ control });
 
   useEffect(() => {
     if (!invoice?.id || !isDirty) return;
-    const savingTimeout = window.setTimeout(() => onSaveStateChange("saving"), 0);
+    const savingTimeout = window.setTimeout(
+      () => onSaveStateChange("saving"),
+      0,
+    );
     const saveTimeout = window.setTimeout(() => {
       saveInvoiceRecovery(userKey, invoice);
       onSaveStateChange("saved");

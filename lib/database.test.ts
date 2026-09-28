@@ -38,9 +38,14 @@ beforeAll(async () => {
     END $$
   `);
   const migrationsDirectory = path.join(process.cwd(), "migrations");
-  const migrations = (await readdir(migrationsDirectory)).filter((file) => file.endsWith(".sql")).sort();
+  const migrations = (await readdir(migrationsDirectory))
+    .filter((file) => file.endsWith(".sql"))
+    .sort();
   for (const migrationFile of migrations) {
-    const migration = await readFile(path.join(migrationsDirectory, migrationFile), "utf8");
+    const migration = await readFile(
+      path.join(migrationsDirectory, migrationFile),
+      "utf8",
+    );
     await sql.unsafe(migration);
   }
   await sql`TRUNCATE profile, clients, invoices, ai_usage`;
@@ -94,8 +99,13 @@ describeWithDatabase("PostgreSQL persistence", () => {
     expect(await database.listClients(firstUserId)).toEqual([saved]);
     expect(await database.listClients(secondUserId)).toEqual([]);
 
-    const updated = await database.saveClient(firstUserId, { ...saved, address: "Cologne" });
-    expect((await database.listClients(firstUserId))[0]?.address).toBe("Cologne");
+    const updated = await database.saveClient(firstUserId, {
+      ...saved,
+      address: "Cologne",
+    });
+    expect((await database.listClients(firstUserId))[0]?.address).toBe(
+      "Cologne",
+    );
     expect(await database.deleteClient(secondUserId, updated.id)).toBe(false);
     expect(await database.deleteClient(firstUserId, updated.id)).toBe(true);
     expect(await database.listClients(firstUserId)).toEqual([]);
@@ -121,23 +131,46 @@ describeWithDatabase("PostgreSQL persistence", () => {
       iban: "DE02120300000000202051",
       bic: "BYLADEM1001",
     };
-    invoice.items = [{ id: crypto.randomUUID(), description: "Design", hours: 4, unitPriceCents: 10_000 }];
+    invoice.items = [
+      {
+        id: crypto.randomUUID(),
+        description: "Design",
+        hours: 4,
+        unitPriceCents: 10_000,
+      },
+    ];
 
     const year = new Date().getFullYear();
-    expect(await database.getNextInvoiceNumber(firstUserId)).toBe(`INV-${year}-001`);
+    expect(await database.getNextInvoiceNumber(firstUserId)).toBe(
+      `INV-${year}-001`,
+    );
     const saved = await database.saveInvoice(firstUserId, invoice);
     expect(saved.status).toBe("draft");
     expect(await database.listInvoices(firstUserId)).toHaveLength(1);
     expect(await database.listInvoices(secondUserId)).toEqual([]);
-    expect(await database.getNextInvoiceNumber(firstUserId)).toBe(`INV-${year}-002`);
-    expect(await database.getNextInvoiceNumber(secondUserId)).toBe(`INV-${year}-001`);
+    expect(await database.getNextInvoiceNumber(firstUserId)).toBe(
+      `INV-${year}-002`,
+    );
+    expect(await database.getNextInvoiceNumber(secondUserId)).toBe(
+      `INV-${year}-001`,
+    );
 
-    expect(await database.updateInvoiceStatus(secondUserId, invoice.id, "sent")).toBeNull();
-    const sent = await database.updateInvoiceStatus(firstUserId, invoice.id, "sent");
+    expect(
+      await database.updateInvoiceStatus(secondUserId, invoice.id, "sent"),
+    ).toBeNull();
+    const sent = await database.updateInvoiceStatus(
+      firstUserId,
+      invoice.id,
+      "sent",
+    );
     expect(sent?.status).toBe("sent");
     expect(sent?.sentAt).not.toBeNull();
 
-    const paid = await database.updateInvoiceStatus(firstUserId, invoice.id, "paid");
+    const paid = await database.updateInvoiceStatus(
+      firstUserId,
+      invoice.id,
+      "paid",
+    );
     expect(paid?.status).toBe("paid");
     expect(paid?.paidAt).not.toBeNull();
     expect(await database.deleteInvoice(secondUserId, invoice.id)).toBe(false);
@@ -146,9 +179,17 @@ describeWithDatabase("PostgreSQL persistence", () => {
   });
 
   it("limits AI description requests independently for each user", async () => {
-    expect(await database.consumeAiDescriptionRequest(firstUserId, 2)).toBe(true);
-    expect(await database.consumeAiDescriptionRequest(firstUserId, 2)).toBe(true);
-    expect(await database.consumeAiDescriptionRequest(firstUserId, 2)).toBe(false);
-    expect(await database.consumeAiDescriptionRequest(secondUserId, 2)).toBe(true);
+    expect(await database.consumeAiDescriptionRequest(firstUserId, 2)).toBe(
+      true,
+    );
+    expect(await database.consumeAiDescriptionRequest(firstUserId, 2)).toBe(
+      true,
+    );
+    expect(await database.consumeAiDescriptionRequest(firstUserId, 2)).toBe(
+      false,
+    );
+    expect(await database.consumeAiDescriptionRequest(secondUserId, 2)).toBe(
+      true,
+    );
   });
 });

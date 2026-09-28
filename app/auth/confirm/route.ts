@@ -17,9 +17,14 @@ export async function GET(request: Request) {
   }
 
   if (tokenHash && type) {
-    const { error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
+    const { error } = await supabase.auth.verifyOtp({
+      type,
+      token_hash: tokenHash,
+    });
     if (!error) return NextResponse.redirect(new URL(next, url.origin));
   }
 
-  return NextResponse.redirect(new URL("/login?error=Could+not+confirm+email", url.origin));
+  return NextResponse.redirect(
+    new URL("/login?error=Could+not+confirm+email", url.origin),
+  );
 }

@@ -61,10 +61,14 @@ function parseRecovery(value: unknown): InvoiceRecovery | null {
 export function readInvoiceRecovery(userKey: string): InvoiceRecovery | null {
   if (typeof window === "undefined") return null;
   try {
-    const scoped = parseRecovery(JSON.parse(window.localStorage.getItem(storageKey(userKey)) ?? "null"));
+    const scoped = parseRecovery(
+      JSON.parse(window.localStorage.getItem(storageKey(userKey)) ?? "null"),
+    );
     if (scoped) return scoped;
 
-    const legacy: unknown = JSON.parse(window.localStorage.getItem(LEGACY_STORAGE_KEY) ?? "[]");
+    const legacy: unknown = JSON.parse(
+      window.localStorage.getItem(LEGACY_STORAGE_KEY) ?? "[]",
+    );
     const migrated = Array.isArray(legacy) ? parseRecovery(legacy[0]) : null;
     if (!migrated) return null;
 
@@ -76,7 +80,10 @@ export function readInvoiceRecovery(userKey: string): InvoiceRecovery | null {
   }
 }
 
-export function saveInvoiceRecovery(userKey: string, invoice: Invoice): InvoiceRecovery {
+export function saveInvoiceRecovery(
+  userKey: string,
+  invoice: Invoice,
+): InvoiceRecovery {
   const recovery = { invoice, updatedAt: new Date().toISOString() };
   window.localStorage.setItem(storageKey(userKey), JSON.stringify(recovery));
   return recovery;
